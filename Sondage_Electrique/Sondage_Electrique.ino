@@ -82,12 +82,13 @@
                                   
                               2) Start               // Lancement du processus d'acquisition en fonction de la configuration sélectionnée
 Version : 0.24 (2017/06/15) -> Modification de la valeur du retro eclairage                           
+Version : 0.25 (2017/06/15) -> Refactoring de codes / acquisition des mesures 
                                   
-  A faire : Saisie des valeurs OA et OM en float
+  A faire : Saisie des valeurs OA et OM en cm
             Possibilité de voir les mesures en temps réel avant acquisition
             Longueur profil prévoir Xmin et Xmax valeurs négatives point suivant
             Modifier le comportement en cas de non saisie -> retourner la valeur par défaut ajouter argument par défaut dans les fonctions valeurNum et valeurFloat
-            Refactoring de codes pour les fonctions d'acquisition electrique
+            Refactoring de codes pour les fonctions d'acquisition electrique 
             Verififier calcul Dip Dip
             Acquisition des données suivant profil
             Acquisition des données suivant carte / balayage -> aller-retour
@@ -201,6 +202,7 @@ void lancementMesures();                              // Lancement des mesures (
 String mesuresSchlumberger(int numeroMesure);         // Lancement des mesures selon le modèle Schlumberger
 String mesuresWenner(int numeroMesure);               // Lancement des mesures selon le modèle Wenner
 String mesuresDipDip(int numeroMesure);               // Lancement des mesures selon le modèle Dipole-Dipole
+void lancementAcquisition();                          // Acquisition et conversion 16 bits
 
 String calculDelta (int &dstMaxAff, int &nbMesAff, double &deltaAff, int dstMax, int nbMesMax, String axe); // Fonction qui permet de calculer les valeurs Delta
 bool verifFile (String identFichier);                 // Vérification de l'existance d'un fichier sur la carte SD
@@ -262,9 +264,12 @@ bool checkCard;
 /* 
  *  VARIABLES DE GESTION DES SONDAGES ELECTRIQUES
  */
-bool utilisationCoeffI = false;         // Si utilisationCoeff == false alors I est mesuré 
-double intensiteFixee = 1.0;            // sinon intensiteFixee est utilisée dans les calculs
-double facteurConversion = 1.0;         // Permet de calculer I2 à partir de U2 du Shunt
+bool utilisationCoeffI = false;        // Si utilisationCoeff == false alors I est mesuré 
+double intensiteFixee = 1.0;           // sinon intensiteFixee est utilisée dans les calculs
+double facteurConversion = 1.0;        // Permet de calculer I2 à partir de U2 du Shunt
+double tensionCanBus1;                 // Conversion de la valeur numérique (16 bits) en valeur décimale pour U1
+double tensionCanBus2;                 // Conversion de la valeur numérique (16 bits) en valeur décimale pour U2
+double intensiteDeduiteCanBus2;        // Calcul de l'intensité I2 déduite de U2 
 
 /*
  * VARIABLES SPECIFIQUES SCHLUMBERGER ET WENNER
@@ -1163,11 +1168,6 @@ String mesuresSchlumberger(int numeroMesure)
 {
   // Déclaration des varianles locales
   String tampon;                      // Collecte les informations à sauvegarder
-  int16_t conversionCanBus1;          // Résultat de la conversion A/N pour la tension différentielle U1
-  int16_t conversionCanBus2;          // Résultat de la conversion A/N pour la tension différentielle U2
-  double tensionCanBus1;               // Conversion de la valeur numérique (16 bits) en valeur décimale pour U1
-  double tensionCanBus2;               // Conversion de la valeur numérique (16 bits) en valeur décimale pour U2
-  double intensiteDeduiteCanBus2;      // Calcul de l'intensité I2 déduite de U2 
   double rhoa;                         // Variable dédié au calcul de Rhoa
   String tensionCanBus1Str;           // Conversion de la tension U1 en chaîne de caractères
   String tensionCanBus2Str;           // Conversion de la tension U2 en chaîne de caractères
@@ -1188,21 +1188,7 @@ String mesuresSchlumberger(int numeroMesure)
     positionnementY = (LectureValeurNum("Position Y(m) :")).toInt();
    }
    
-  LectureValeurNum("PRESS ENT TO START");  // Déclenchement des mesures après un appui sur ENTER
-          
-  conversionCanBus1 = ads.readADC_Differential_0_1();               // Mesure de la tension V1
-  tensionCanBus1 = double(conversionCanBus1) * multiplier;  
-  
-  if (utilisationCoeffI)                                            // La valeur de I est fixée par l'utilisateur
-  {
-    intensiteDeduiteCanBus2 = intensiteFixee;
-  }
-  else                                                              // Sinon la mesure de I est effectuée via le Shunt
-  {
-    conversionCanBus2 = ads.readADC_Differential_2_3();             // Mesure de la tension V2 du Shunt pour en déduire I2
-    tensionCanBus2 = double (conversionCanBus2) * multiplier; 
-    intensiteDeduiteCanBus2 = tensionCanBus2 * facteurConversion; 
-  }
+  lancementAcquisition();
 
   /*
    * Calcul de la résistivité apparente Rhoa
@@ -1245,11 +1231,6 @@ String mesuresSchlumberger(int numeroMesure)
 String mesuresWenner(int numeroMesure)
 {
   String tampon;                      // Collecte les informations à sauvegardes
-  int16_t conversionCanBus1;          // Résultat de la conversion A/N pour la tension différentielle U1
-  int16_t conversionCanBus2;          // Résultat de la conversion A/N pour la tension différentielle U2
-  double tensionCanBus1;              // Conversion de la valeur numérique (16 bits) en valeur décimale pour U1
-  double tensionCanBus2;              // Conversion de la valeur numérique (16 bits) en valeur décimale pour U2
-  double intensiteDeduiteCanBus2;     // Calcul de l'intensité I2 déduite de U2 
   double rhoa;                        // Variable dédié au calcul de Rhoa
   String tensionCanBus1Str;           // Conversion de la tension U1 en chaîne de caractères
   String tensionCanBus2Str;           // Conversion de la tension U2 en chaîne de caractères
@@ -1269,22 +1250,8 @@ String mesuresWenner(int numeroMesure)
     positionnementX = (LectureValeurNum("Position X(m) :")).toInt();
     positionnementY = (LectureValeurNum("Position Y(m) :")).toInt();
    }
-   
-  LectureValeurNum("PRESS ENT TO START");  // Déclenchement des mesures après un appui sur ENTER
-  
-  conversionCanBus1 = ads.readADC_Differential_0_1(); // Mesure de la tension V1
-  tensionCanBus1 = double(conversionCanBus1) * multiplier;  
-  
-  if (utilisationCoeffI)                                            // La valeur de I est fixée par l'utilisateur
-  {
-    intensiteDeduiteCanBus2 = intensiteFixee;
-  }
-  else                                                              // Sinon la mesure de I est effectuée via le Shunt
-  {
-    conversionCanBus2 = ads.readADC_Differential_2_3();             // Mesure de la tension V2 du Shunt pour en déduire I2
-    tensionCanBus2 = double (conversionCanBus2) * multiplier; 
-    intensiteDeduiteCanBus2 = tensionCanBus2 * facteurConversion; 
-  }   
+
+  lancementAcquisition();
   
   /*
    * Calcul de la résisitivité apparente
@@ -1326,11 +1293,6 @@ String mesuresWenner(int numeroMesure)
 String mesuresDipDip(int numeroMesure)
 {
   String tampon;                      // Collecte les informations à sauvegardes
-  int16_t conversionCanBus1;          // Résultat de la conversion A/N pour la tension différentielle U1
-  int16_t conversionCanBus2;          // Résultat de la conversion A/N pour la tension différentielle U2
-  double tensionCanBus1;              // Conversion de la valeur numérique (16 bits) en valeur décimale pour U1
-  double tensionCanBus2;              // Conversion de la valeur numérique (16 bits) en valeur décimale pour U2
-  double intensiteDeduiteCanBus2;     // Calcul de l'intensité I2 déduite de U2 
   double rhoa;                        // Variable dédié au calcul de Rhoa
   String tensionCanBus1Str;           // Conversion de la tension U1 en chaîne de caractères
   String tensionCanBus2Str;           // Conversion de la tension U2 en chaîne de caractères
@@ -1349,21 +1311,7 @@ String mesuresDipDip(int numeroMesure)
     positionnementY = (LectureValeurNum("Position Y(m) :")).toInt();
    }
   
-  LectureValeurNum("PRESS ENT TO START");  // Déclenchement des mesures après un appui sur ENTER
-  
-  conversionCanBus1 = ads.readADC_Differential_0_1(); // Mesure de la tension V1
-  tensionCanBus1 = double(conversionCanBus1) * multiplier;  
-  
-  if (utilisationCoeffI)                                            // La valeur de I est fixée par l'utilisateur
-  {
-    intensiteDeduiteCanBus2 = intensiteFixee;
-  }
-  else                                                              // Sinon la mesure de I est effectuée via le Shunt
-  {
-    conversionCanBus2 = ads.readADC_Differential_2_3();             // Mesure de la tension V2 du Shunt pour en déduire I2
-    tensionCanBus2 = double (conversionCanBus2) * multiplier; 
-    intensiteDeduiteCanBus2 = tensionCanBus2 * facteurConversion; 
-  }   
+  lancementAcquisition();
   
   /*
    * Calcul de la résisitivité apparente
@@ -1456,6 +1404,34 @@ bool verifFile(String identFichier)
 /************************************************************/
 /* FIN BLOC : FONCTION DE VERIFICATION FICHIER SUR CARTE SD */
 /************************************************************/
+
+/* --------------------------------------------------------------------------------- */
+
+/*******************************************/
+/* BLOC : FONCTION ACQUISITION DES MESURES */
+/*******************************************/
+
+void lancementAcquisition()
+{
+  LectureValeurNum("PRESS ENT TO START");  // Déclenchement des mesures après un appui sur ENTER
+  
+  tensionCanBus1 = double(ads.readADC_Differential_0_1()) * multiplier; // Mesure de la tension V1 et conversion à l'aide du coefficient
+   
+  if (utilisationCoeffI)                                            // La valeur de I est fixée par l'utilisateur
+  {
+    intensiteDeduiteCanBus2 = intensiteFixee;
+  }
+  else                                                              // Sinon la mesure de I est effectuée via le Shunt
+  {
+    tensionCanBus2 = double(ads.readADC_Differential_2_3()) * multiplier;             // Mesure de la tension V2 du Shunt pour en déduire I2
+    intensiteDeduiteCanBus2 = tensionCanBus2 * facteurConversion;               
+  }   
+}
+
+/***********************************************/
+/* FIN BLOC : FONCTION ACQUISITION DES MESURES */
+/***********************************************/
+
 
 /* --------------------------------------------------------------------------------- */
 
