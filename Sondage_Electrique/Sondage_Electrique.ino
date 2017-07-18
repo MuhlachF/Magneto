@@ -82,7 +82,8 @@
                                   
                               2) Start               // Lancement du processus d'acquisition en fonction de la configuration sélectionnée
 Version : 0.24 (2017/06/15) -> Modification de la valeur du retro eclairage                           
-Version : 0.25 (2017/06/15) -> Refactoring de codes / acquisition des mesures 
+Version : 0.25 (2017/07/18) -> Refactoring de codes / acquisition des mesures 
+Version : 0.26 (2017/07/18) -> Affichage des conversions en temps réel
                                   
   A faire : Saisie des valeurs OA et OM en cm
             Possibilité de voir les mesures en temps réel avant acquisition
@@ -188,7 +189,7 @@ File monFichier;                          // l'objet monFichier sera utilisé po
 String LectureValeurNum(String affichage);            // Fonction permettant la lecture d'un nombre entier saisi au clavier
 String LectureValeurFloat(String affichage);          // Fonction permettant la lecture d'un nombre décimal saisi au clavier
 String lectureClavierNum();
-void pause();                                         // Fonction permettant d'effectuer une pause dans le programme (attente appui sur ENTER)
+bool pause();                                         // Fonction permettant d'effectuer une pause dans le programme (attente appui sur ENTER)
 void affichageMenuPrincipal();                        // Affichage du menu principal
 void affichageMenuConfiguration();                    // Affichage du sous-menu permettant de configurer l'instrument de mesures
 int affichageMenuMode();                              // Affichage des types de sondage (sondages spécifiques, selon profil ou carte)
@@ -270,6 +271,9 @@ double facteurConversion = 1.0;        // Permet de calculer I2 à partir de U2 
 double tensionCanBus1;                 // Conversion de la valeur numérique (16 bits) en valeur décimale pour U1
 double tensionCanBus2;                 // Conversion de la valeur numérique (16 bits) en valeur décimale pour U2
 double intensiteDeduiteCanBus2;        // Calcul de l'intensité I2 déduite de U2 
+String tensionCanBus1Str;              // Conversion de la tension U1 en chaîne de caractères
+String tensionCanBus2Str;              // Conversion de la tension U2 en chaîne de caractères
+String intensiteDeduiteCanBus2Str;     // Conversion de l'intensité I2 en chaîne de caractères
 
 /*
  * VARIABLES SPECIFIQUES SCHLUMBERGER ET WENNER
@@ -1039,7 +1043,7 @@ String LectureValeurNum(String affichage)
 /*********************************************/
 /* BLOC : PAUSE PROGRAMME / APPUI SUR TOUCHE */
 /*********************************************/
-void pause()
+bool pause()
 {
  String touche;
  bool validation = false;
@@ -1064,6 +1068,7 @@ void pause()
         }
      }
    }
+   return 1;
 }
 /*************************************************/
 /* FIN BLOC : PAUSE PROGRAMME / APPUI SUR TOUCHE */
@@ -1169,9 +1174,6 @@ String mesuresSchlumberger(int numeroMesure)
   // Déclaration des varianles locales
   String tampon;                      // Collecte les informations à sauvegarder
   double rhoa;                         // Variable dédié au calcul de Rhoa
-  String tensionCanBus1Str;           // Conversion de la tension U1 en chaîne de caractères
-  String tensionCanBus2Str;           // Conversion de la tension U2 en chaîne de caractères
-  String intensiteDeduiteCanBus2Str;  // Conversion de l'intensité I2 en chaîne de caractères
   String rhoaStr;                     // Conversion de la Rhoa en chaîne de caractères
   int positionnementX;                 // Variables utilisées pour le positionnement manuel
   int positionnementY;                 // Variables utilisées pour le positionnement manuel
@@ -1196,9 +1198,6 @@ String mesuresSchlumberger(int numeroMesure)
   rhoa = PI * (double(distanceOA)*double(distanceOA) - double(distanceOM)*double(distanceOM)) / (2 * double(distanceOM)) * (tensionCanBus1 / intensiteDeduiteCanBus2);
 
   // Conversion des données en chaine de caractères
-  tensionCanBus1Str = String(tensionCanBus1,PRECISION); // On augmente la précision de la conversion double TO String
-  tensionCanBus2Str = String(tensionCanBus2,PRECISION); // On augmente la précision de la conversion double TO String
-  intensiteDeduiteCanBus2Str = String(intensiteDeduiteCanBus2,PRECISION);
   rhoaStr = String(rhoa,PRECISION);
 
   affichageCalculs (tensionCanBus1Str,intensiteDeduiteCanBus2Str,rhoaStr);
@@ -1213,11 +1212,7 @@ String mesuresSchlumberger(int numeroMesure)
   {
     tampon = tampon+"\n";
   }
-  
-   
-  return tampon;
-
-  
+  return tampon; 
 }
 /************************************************/
 /* FIN BLOC : FONCTION ACQUISITION SCHLUMBERGER */
@@ -1232,9 +1227,6 @@ String mesuresWenner(int numeroMesure)
 {
   String tampon;                      // Collecte les informations à sauvegardes
   double rhoa;                        // Variable dédié au calcul de Rhoa
-  String tensionCanBus1Str;           // Conversion de la tension U1 en chaîne de caractères
-  String tensionCanBus2Str;           // Conversion de la tension U2 en chaîne de caractères
-  String intensiteDeduiteCanBus2Str;  // Conversion de l'intensité I2 en chaîne de caractères
   String rhoaStr;                     // Conversion de Rhoa en chaîne de caractères
   int positionnementX;                 // Variables utilisées pour le positionnement manuel
   int positionnementY;                 // Variables utilisées pour le positionnement manuel
@@ -1259,9 +1251,6 @@ String mesuresWenner(int numeroMesure)
   rhoa = 2 * PI * distanceA * (tensionCanBus1 / intensiteDeduiteCanBus2);
     
   // Conversion des données en chaine de caractères
-  tensionCanBus1Str = String(tensionCanBus1,PRECISION);
-  tensionCanBus2Str = String(tensionCanBus2,PRECISION);
-  intensiteDeduiteCanBus2Str = String(intensiteDeduiteCanBus2,PRECISION);
   rhoaStr = String(rhoa,PRECISION);
 
   affichageCalculs (tensionCanBus1Str,intensiteDeduiteCanBus2Str,rhoaStr);
@@ -1294,9 +1283,6 @@ String mesuresDipDip(int numeroMesure)
 {
   String tampon;                      // Collecte les informations à sauvegardes
   double rhoa;                        // Variable dédié au calcul de Rhoa
-  String tensionCanBus1Str;           // Conversion de la tension U1 en chaîne de caractères
-  String tensionCanBus2Str;           // Conversion de la tension U2 en chaîne de caractères
-  String intensiteDeduiteCanBus2Str;  // Conversion de l'intensité I2 en chaîne de caractères
   String rhoaStr;                     // Conversion de Rhoa en chaîne de caractères
   int positionnementX;                // Variables utilisées pour le positionnement manuel
   int positionnementY;                // Variables utilisées pour le positionnement manuel
@@ -1319,9 +1305,6 @@ String mesuresDipDip(int numeroMesure)
   rhoa = PI * distanceElectrodesA * valeurN * (valeurN + 1)*(valeurN + 2) * (tensionCanBus1 / intensiteDeduiteCanBus2);
     
   // Conversion des données en chaine de caractères
-  tensionCanBus1Str = String(tensionCanBus1,PRECISION);
-  tensionCanBus2Str = String(tensionCanBus2,PRECISION);
-  intensiteDeduiteCanBus2Str = String(intensiteDeduiteCanBus2,PRECISION);
   rhoaStr = String(rhoa,PRECISION);
 
   affichageCalculs (tensionCanBus1Str,intensiteDeduiteCanBus2Str,rhoaStr);
@@ -1413,19 +1396,35 @@ bool verifFile(String identFichier)
 
 void lancementAcquisition()
 {
-  LectureValeurNum("PRESS ENT TO START");  // Déclenchement des mesures après un appui sur ENTER
+  //LectureValeurNum("PRESS ENT TO START");  // Déclenchement des mesures après un appui sur ENTER
+  int AnalogClavier = 0;
   
-  tensionCanBus1 = double(ads.readADC_Differential_0_1()) * multiplier; // Mesure de la tension V1 et conversion à l'aide du coefficient
-   
-  if (utilisationCoeffI)                                            // La valeur de I est fixée par l'utilisateur
+  while (!((AnalogClavier >= seuilsAnalogClavier[0] - TOLERANCE_ANALOG_CLAVIER) && (AnalogClavier <= seuilsAnalogClavier[0] + TOLERANCE_ANALOG_CLAVIER)))
   {
-    intensiteDeduiteCanBus2 = intensiteFixee;
+    lcd.clear();
+    tensionCanBus1 = double(ads.readADC_Differential_0_1()) * multiplier; // Mesure de la tension V1 et conversion à l'aide du coefficient
+    tensionCanBus1Str = String(tensionCanBus1,PRECISION);
+    
+    lcd.print("U1:"+tensionCanBus1Str+"mV");
+    lcd.setCursor(2,0);
+    if (utilisationCoeffI)                                            // La valeur de I est fixée par l'utilisateur
+    {
+      intensiteDeduiteCanBus2 = intensiteFixee;
+    }
+    else                                                              // Sinon la mesure de I est effectuée via le Shunt
+    {
+      tensionCanBus2 = double(ads.readADC_Differential_2_3()) * multiplier;             // Mesure de la tension V2 du Shunt pour en déduire I2
+    }   
+    tensionCanBus2Str = String(tensionCanBus2,PRECISION);
+    intensiteDeduiteCanBus2 = tensionCanBus2 * facteurConversion; 
+    intensiteDeduiteCanBus2Str = String(intensiteDeduiteCanBus2,PRECISION);              
+    lcd.setCursor(2,1);
+    lcd.print("I2:"+intensiteDeduiteCanBus2Str+"mA");
+
+    
+    delay (200);
+    AnalogClavier=analogRead(WIRE_CLAVIER);
   }
-  else                                                              // Sinon la mesure de I est effectuée via le Shunt
-  {
-    tensionCanBus2 = double(ads.readADC_Differential_2_3()) * multiplier;             // Mesure de la tension V2 du Shunt pour en déduire I2
-    intensiteDeduiteCanBus2 = tensionCanBus2 * facteurConversion;               
-  }   
 }
 
 /***********************************************/
