@@ -81,18 +81,19 @@
                                   14-Reset config    // Réinitialise les données et le fichier de configuration
                                   
                               2) Start               // Lancement du processus d'acquisition en fonction de la configuration sélectionnée
+                              
 Version : 0.24 (2017/06/15) -> Modification de la valeur du retro eclairage                           
 Version : 0.25 (2017/07/18) -> Refactoring de codes / acquisition des mesures 
 Version : 0.26 (2017/07/18) -> Affichage des conversions en temps réel
 Version : 0.27 (2017/07/19) -> Corrections bugs affichage mineurs
 Version : 0.28 (2017/07/19) -> Nouvelle unité de mesure adpotée : cm au lieu du m
+Version : 0.29 (2017/07/19) -> refactoring de codes et optmisation mémoire / flux de sortie
                                   
   A faire : Longueur profil prévoir Xmin et Xmax valeurs négatives point suivant
             Modifier le comportement en cas de non saisie -> retourner la valeur par défaut ajouter argument par défaut dans les fonctions valeurNum et valeurFloat
             Acquisition des données suivant profil
             Acquisition des données suivant carte / balayage -> aller-retour
             Intégration de l'heure à partir du module RTC + menu de paramétrage de l'heure
-            Intégration des mesures magnétiques (distance des sondes)
             Sauvegarde et lecture du fichier de configuration en EEPROM
             Ajout de la fonction de reinitilisation des valeurs (valeurs par défaut)
             //Ajout d'un bip sonore métronome + Bip de fin de des mesures
@@ -100,11 +101,11 @@ Version : 0.28 (2017/07/19) -> Nouvelle unité de mesure adpotée : cm au lieu d
             Intégration de l'ADS1220
             //Intégration d'une librairie FLoat64 pour codage des Floats sur 64 bits
             //Le top : intégration d'une IRQ permettant de lancer la calibration du clavier analogique
+            //Intégration des mesures magnétiques (distance des sondes)
             
 */
 #define VERSION_MAJEURE 0
-#define VERSION_MINEURE 28
-
+#define VERSION_MINEURE 29
 /*
   DESCRIPTION DES CONNEXIONS
   
@@ -177,6 +178,11 @@ rgb_lcd lcd;                              // Objet lcd couleur est déclaré
 int valeurRetro = 0;                      // Valeur du rétroéclairage
 
 /*
+ * FLUX DE SORTIE
+ */
+String flux;
+
+/*
  * DESCRIPTEUR DE FICHIER
  */
 File monFichier;                          // l'objet monFichier sera utilisé pour l'enregistrement sur 
@@ -184,28 +190,29 @@ File monFichier;                          // l'objet monFichier sera utilisé po
 /*
  * DECLARATION DES FONCTIONS
  */
-String LectureValeurNum(String affichage);            // Fonction permettant la lecture d'un nombre entier saisi au clavier
-String LectureValeurFloat(String affichage);          // Fonction permettant la lecture d'un nombre décimal saisi au clavier
+String LectureValeurNum(String affichage);              // Fonction permettant la lecture d'un nombre entier saisi au clavier
+String LectureValeurFloat(String affichage);            // Fonction permettant la lecture d'un nombre décimal saisi au clavier
 String lectureClavierNum();
-void pause();                                         // Fonction permettant d'effectuer une pause dans le programme (attente appui sur ENTER)
-void affichageMenuPrincipal();                        // Affichage du menu principal
-void affichageMenuConfiguration();                    // Affichage du sous-menu permettant de configurer l'instrument de mesures
-int affichageMenuMode();                              // Affichage des types de sondage (sondages spécifiques, selon profil ou carte)
-int affichageMenuConfSpec(int navBasse,int navHaute); // Affichage des modes de mesures (Schlumberger, Wenner, Dipôle-Dipôle, ou magnetique)
-int affichageMenuMesureI();                           // Sous-menu permettant de fixer I ou de le mesurer via la resistance de Shunt
-int affichageMenuPositionnement();                    // Sous-menu permettant de choisir le type de positionnement
-int modifFrequence();                                 // Frequence du CAN pour les mesures profil et carte
-int modifNombreMesures();                             // Nombre de meusres spécifiques
-String navigationMenu();                              // Fonction permettant de naviguer dans les menus
-void lancementMesures();                              // Lancement des mesures (START est sélectionné)
-String mesuresSchlumberger(int numeroMesure);         // Lancement des mesures selon le modèle Schlumberger
-String mesuresWenner(int numeroMesure);               // Lancement des mesures selon le modèle Wenner
-String mesuresDipDip(int numeroMesure);               // Lancement des mesures selon le modèle Dipole-Dipole
-void lancementAcquisition();                          // Acquisition et conversion 16 bits
+void pause();                                           // Fonction permettant d'effectuer une pause dans le programme (attente appui sur ENTER)
+void affichageMenuPrincipal();                          // Affichage du menu principal
+void affichageMenuConfiguration();                      // Affichage du sous-menu permettant de configurer l'instrument de mesures
+int affichageMenuMode();                                // Affichage des types de sondage (sondages spécifiques, selon profil ou carte)
+int affichageMenuConfSpec(int navBasse,int navHaute);   // Affichage des modes de mesures (Schlumberger, Wenner, Dipôle-Dipôle, ou magnetique)
+int affichageMenuMesureI();                             // Sous-menu permettant de fixer I ou de le mesurer via la resistance de Shunt
+int affichageMenuPositionnement();                      // Sous-menu permettant de choisir le type de positionnement
+int modifFrequence();                                   // Frequence du CAN pour les mesures profil et carte
+int modifNombreMesures();                               // Nombre de meusres spécifiques
+String navigationMenu();                                // Fonction permettant de naviguer dans les menus
+void lancementMesures();                                // Lancement des mesures (START est sélectionné)
+String mesuresSchlumberger(int numeroMesure);           // Lancement des mesures selon le modèle Schlumberger
+String mesuresWenner(int numeroMesure);                 // Lancement des mesures selon le modèle Wenner
+String mesuresDipDip(int numeroMesure);                 // Lancement des mesures selon le modèle Dipole-Dipole
+String alimentationFluxSpecifique (String typeSondage); // Enregistrement de l'entête sur sur carte µSD
+void lancementAcquisition();                            // Acquisition et conversion 16 bits
 
 String calculDelta (int &dstMaxAff, int &nbMesAff, double &deltaAff, int dstMax, int nbMesMax, String axe); // Fonction qui permet de calculer les valeurs Delta
-bool verifFile (String identFichier);                 // Vérification de l'existance d'un fichier sur la carte SD
-bool saveData (String identFichier,String Data);      // Fonction de sauvegarde de données
+bool verifFile (String identFichier);                   // Vérification de l'existance d'un fichier sur la carte SD
+bool saveData (String identFichier,String Data);        // Fonction de sauvegarde de données
 
 /*
  * DECLARATION DES MENUS
@@ -1388,7 +1395,6 @@ bool verifFile(String identFichier)
 
 void lancementAcquisition()
 {
-  //LectureValeurNum("PRESS ENT TO START");  // Déclenchement des mesures après un appui sur ENTER
   int AnalogClavier = 0;
     
   while (!((AnalogClavier >= seuilsAnalogClavier[0] - TOLERANCE_ANALOG_CLAVIER) && (AnalogClavier <= seuilsAnalogClavier[0] + TOLERANCE_ANALOG_CLAVIER)))
@@ -1424,7 +1430,6 @@ void lancementAcquisition()
 /* FIN BLOC : FONCTION ACQUISITION DES MESURES */
 /***********************************************/
 
-
 /* --------------------------------------------------------------------------------- */
 
 /***********************************************************/
@@ -1458,6 +1463,51 @@ bool saveData (String identFichier,String Data)
 /***************************************************************/
 /* FIN BLOC : FONCTION DE SAUVERGARDE DES DONNEES SUR CARTE SD */
 /***************************************************************/
+
+/* --------------------------------------------------------------------------------- */
+
+/*******************************/
+/* BLOC / ALIMENTATION DU FLUX */
+/*******************************/
+/* 
+         *  FORMAT : 
+         *  IDENTIFIANT DE FICHIER : ID
+         *  
+         *  SONDAGE ELECTRIQUE SPECIFIQUE : TYPE DE MESURE
+         *  
+         *  CONSTANTES DEFINIES :
+         *  I calculée ou fixée
+         *  Distance a
+         *  Coefficient N
+         *  
+         *  ID de mesure,RHOA,U1,I2,DELTA,(GPS)
+         */
+String alimentationFluxSpecifique (String typeSondage)
+{
+  flux =  "IDENTIFIANT DES MESURES : "+identifiant+"\n"+"MESURE :"+typeSondage+"\n"+"\nCONSTANTES DEFINIEES :";  
+                        
+  if (utilisationCoeffI == true)
+  {
+     flux = flux+"\nINTENSITE I2 FIXEE :"+intensiteFixee;
+  }
+  else
+  {
+     flux = flux+"\nINTENSITE I2 CALCULEE, FACTEUR DE CONVERSION :"+facteurConversion;
+  }
+  flux = flux+"\n\n"+"ID MESURE, DISTANCE AB(cm), DISTANCE MN(cm), RHOA(Ohms/m), TENSION U1(mV), TENSION U2 (mV), COUTANT I2(mA), POSITION (X,Y) OU GPS\n";
+         
+  Serial.print(flux);
+  // AJOUTER L'OPTION GPS
+  saveData(identifiant,flux);
+
+   lcd.setCursor(0,1);
+   lcd.print(typeSondage);
+   pause();
+}
+
+/***********************************/
+/* FIN BLOC / ALIMENTATION DU FLUX */
+/***********************************/
 
 /* --------------------------------------------------------------------------------- */
 
@@ -1497,39 +1547,11 @@ void lancementMesures()
     /**********************************/
     if (confSpecifique == 0)  // Dispositif Schlumberger distance AB varie et MN fixe
       {
-        
-        /* 
-         *  FORMAT : 
-         *  IDENTIFIANT DE FICHIER : ID
-         *  
-         *  SONDAGE ELECTRIQUE SPECIFIQUE : MESURE SCHLUMBERGER
-         *  
-         *  CONSTANTES DEFINIES :
-         *  de mesure,distance A entre Electrodes,valeur de N,RHOA,U1,I2,DELTA,(POS X, POS Y) ou (GPS
-         */
-         int i=1;
-         String flux =  "IDENTIFIANT DES MESURES : "+identifiant+"\n"+"MESURE SCHLUMBERGER"+"\n"+"\nCONSTANTES DEFINIEES :";  
-                        
-         if (utilisationCoeffI == true)
-         {
-            flux = flux+"\nINTENSITE I2 FIXEE :"+intensiteFixee;
-         }
-         else
-         {
-            flux = flux+"\nINTENSITE I2 CALCULEE, FACTEUR DE CONVERSION :"+facteurConversion;
-         }
-
-         flux = flux+"\n\n"+"ID MESURE, DISTANCE AB(cm), DISTANCE MN(cm), RHOA(Ohms/m), TENSION U1(mV), TENSION U2 (mV), COUTANT I2(mA), POSITION (X,Y) OU GPS\n";
-         
-         Serial.print(flux);
-         // AJOUTER L'OPTION GPS
-         saveData(identifiant,flux);
+        int i=1;
+            
+        alimentationFluxSpecifique ("SCHLUMBERGER"); // Création et enregistrement de l'entête sur support SD
 
         // ACQUISITION DES DONNEES
- 
-        lcd.setCursor(0,1);
-        lcd.print("Schlumberger");
-        pause();      
         distanceOM = (LectureValeurNum("Distance OM(cm) :"+String(distanceOM))).toInt(); 
         distanceOM = constrain (distanceOM,1,DISTANCE_OM_MAX);
 
@@ -1552,37 +1574,8 @@ void lancementMesures()
     /****************************/
     if (confSpecifique == 1)                     
       {
-        /* 
-         *  FORMAT : 
-         *  IDENTIFIANT DE FICHIER : ID
-         *  
-         *  SONDAGE ELECTRIQUE SPECIFIQUE : MESURE WENNER
-         *  
-         *  CONSTANTES DEFINIES :
-         *  I calculée ou fixée
-         *  
-         *  ID de mesure,distance A entre Electrodes,valeur de N,RHOA,U1,I2,DELTA,(GPS)
-         */
          int i=1;
-         String flux =  "IDENTIFIANT DES MESURES : "+identifiant+"\n"+"SONDAGE MESURES SPECIFIQUES : MESURE WENNER"+"\n"+"\nCONSTANTES DEFINIEES :";
-                 
-         if (utilisationCoeffI == true)
-         {
-            flux = flux+"\nINTENSITE I2 FIXEE :"+intensiteFixee;
-         }
-         else
-         {
-            flux = flux+"\nINTENSITE I2 CALCULEE, FACTEUR DE CONVERSION :"+facteurConversion;
-         }
-
-         flux = flux+"\n\n"+"ID MESURE, DISTANCE A(cm), RHOA(Ohms/m), TENSION U1(mV), TENSION U2 (mV), COUTANT I2(mA)"+"\n";
-
-         // AJOUTER L'OPTION GPS
-         saveData(identifiant,flux);
-
-         lcd.setCursor(0,1);
-         lcd.print("Wenner");
-         pause();
+         alimentationFluxSpecifique ("WENNER"); // Création et enregistrement de l'entête sur support SD
 
          while (true)
          {
@@ -1601,40 +1594,8 @@ void lancementMesures()
     /***********************************/
     if (confSpecifique == 2)                     
       {
-        /* 
-         *  FORMAT : 
-         *  IDENTIFIANT DE FICHIER : ID
-         *  
-         *  SONDAGE ELECTRIQUE SPECIFIQUE : MESURE DIPOLE-DIPOLE
-         *  
-         *  CONSTANTES DEFINIES :
-         *  I calculée ou fixée
-         *  Distance a
-         *  Coefficient N
-         *  
-         *  ID de mesure,RHOA,U1,I2,DELTA,(GPS)
-         */
          int i=1;
-         String flux =  "IDENTIFIANT DES MESURES : "+identifiant+"\n"+"SONDAGE MESURES SPECIFIQUES : MESURE DIPOLE-DIPOLE"+"\n"+"\nCONSTANTES DEFINIEES :"+
-                        "\nDISTANCE ENTRE ECLECTRODES(cm): "+distanceElectrodesA+"\nVALEUR DE N : "+valeurN;
-                 
-         if (utilisationCoeffI == true)
-         {
-            flux = flux+"\nINTENSITE I2 FIXEE :"+intensiteFixee;
-         }
-         else
-         {
-            flux = flux+"\nINTENSITE I2 CALCULEE, FACTEUR DE CONVERSION :"+facteurConversion;
-         }
-
-         flux = flux+"\n\n"+"ID MESURE, RHOA(Ohms/m), TENSION U1(mV), TENSION U2 (mV), COUTANT I2(mA)"+"\n";
-
-         // AJOUTER L'OPTION GPS
-         saveData(identifiant,flux);
-
-           lcd.setCursor(0,1);
-           lcd.print("Dip-Dipole");
-           pause();
+         alimentationFluxSpecifique ("DIPOLE-DIP"); // Création et enregistrement de l'entête sur support SD
 
         while (true)
         {
@@ -1689,7 +1650,7 @@ void lancementMesures()
        *  
        *  NUMERO DE MESURE, RHOA,U1,I2,DELTA,(GPS)
        */
-       String flux =  "IDENTIFIANT DES MESURES : "+identifiant+"\n"+"SONDAGE SUIVANT PROFIL : MESURE DIPOLE-DIPOLE"+"\n"+"CONSTANTES DEFINIEES :\n"+
+       flux =  "IDENTIFIANT DES MESURES : "+identifiant+"\n"+"SONDAGE SUIVANT PROFIL : MESURE DIPOLE-DIPOLE"+"\n"+"CONSTANTES DEFINIEES :\n"+
                       "DISTANCE A ENTRE ELECTRODES(m):"+distanceElectrodesA+"\nVALEUR DE N : "+valeurN+"\n"+"LONGUEUR DU PROFIL (m) : "+DistanceXMaxProfil+
                       "\nNOMBRE DE MESURES EFFECTUEES : "+nbMesuresXProfil+"\nVALEUR CALCULEE DE DELTA : "+DeltaXProfil;
        
@@ -1702,7 +1663,7 @@ void lancementMesures()
           flux = flux+"\nINTENSITE I2 CALCULEE, FACTEUR DE CONVERSION :"+facteurConversion;
        }
 
-       flux = flux+"\n\n"+"ID MESURE, RHOA(INDICATION SEULEMENT en Ohms !), TENSION U1(mV), TENSION U2(mv), COUTANT I2(mA), DELTA X(m)"+"\n";
+       flux = flux+"\n\n"+"ID MESURE, RHOA(Ohms/m), TENSION U1(mV), TENSION U2(mv), COUTANT I2(mA), DELTA X(m)"+"\n";
 
        //AJOUTER L'OPTION GPS  
        saveData(identifiant,flux);
