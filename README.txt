@@ -1,95 +1,93 @@
 ---------------------------------
-1. Principe du sondage éléctrique
+1. Principe du sondage Ã©lÃ©ctrique
 ---------------------------------
-La prospection électrique consiste à injecter des courants sur une paire 
-d’électrodes plantées dans le sol et à mesurer des potentiels en d’autres 
+La prospection Ã©lectrique consiste Ã  injecter des courants sur une paire 
+dâ€™Ã©lectrodes plantÃ©es dans le sol et Ã  mesurer des potentiels en dâ€™autres 
 points de la surface. 
 
 Livre Applied Geophysics 1: Electrical Methods
-Auteur principal : Nicolas Florsch / Co-auteur : Frédéric MUHLACH
-Relié: 220 pages
+Auteur principal : Nicolas Florsch / Co-auteur : FrÃ©dÃ©ric MUHLACH
+ReliÃ©: 220 pages
 Editeur : ISTE Press - Elsevier (20 novembre 2017)
 Langue : Anglais
 ISBN-10: 1785481991
 ISBN-13: 978-1785481994
 
 -----------------------------------
-2. Présentation du projet : Magneto
+2. PrÃ©sentation du projet : Magneto
 -----------------------------------
 
-Le projet de réalisation qui vous est ici présenté est destiné à la prospection 
-électrique du sous-sol par mesure de résistivité. Cet appareil est «opensource» 
-et vous pourrez donc modifier à votre guise le programme qu’il contient pour 
-l’adapter à vos besoins ou ajouter de nouvelles fonctionnalités. 
+Le projet de rÃ©alisation qui vous est ici prÃ©sentÃ© est destinÃ© Ã  la prospection 
+Ã©lectrique du sous-sol par mesure de rÃ©sistivitÃ©. Cet appareil est Â«opensourceÂ» 
+et vous pourrez donc modifier Ã  votre guise le programme quâ€™il contient pour 
+lâ€™adapter Ã  vos besoins ou ajouter de nouvelles fonctionnalitÃ©s. 
 
-Cet appareil est uniquement dédié à l’acquisition de valeurs analogiques, 
-telles qu’intensités et tensions. Les signaux sont ensuite convertis au format 
-numérique et sauvegardés sur un support de stockage pour y être analysés, à
-l’aide d’un logiciel spécialisé de géophysique. Il s’agit de déterminer la 
-variation spatiale des résistivités du sous-sol.
+Cet appareil est uniquement dÃ©diÃ© Ã  lâ€™acquisition de valeurs analogiques, 
+telles quâ€™intensitÃ©s et tensions. Les signaux sont ensuite convertis au format 
+numÃ©rique et sauvegardÃ©s sur un support de stockage pour y Ãªtre analysÃ©s, Ã 
+lâ€™aide dâ€™un logiciel spÃ©cialisÃ© de gÃ©ophysique. Il sâ€™agit de dÃ©terminer la 
+variation spatiale des rÃ©sistivitÃ©s du sous-sol.
 
 -------------------------
 3. Architecture du projet
 -------------------------
-						  |---------------|             |-------------|
-						  | Affichage des |             |  Horodatage | 
-						  | informations  |				|    + GPS    | 
-   						  |---------------|             |-------------|
+                          |---------------|             |-------------|
+                          | Affichage des |             |  Horodatage | 
+                          | informations  |             |    + GPS    |
+                          |---------------|             |-------------|
                                    ^                            |
                                    |                            V                
     |------------|          |------------|         |------------------------|
-    | Conversion |--------->| Traitement |-------->| Sauvegarde des données |
-    | Analog/Num |          |    (µc)    |         |       collectées       |
+    | Conversion |--------->| Traitement |-------->| Sauvegarde des donnÃ©es |
+    | Analog/Num |          |    (Âµc)    |         |       collectÃ©es       |
     |------------|          |------------|         |------------------------|
-	                               |
-								   v
-						    |------------|
-							| Saisie des |
-							| paramètres |
-							|------------|
-	
-	
+                                   |
+                                   v
+                            |------------|
+                            | Saisie des |
+                            | paramÃ¨tres |
+                            |------------|
 	
 ----------------------------------------
-4. Présentation des composants matériels
+4. PrÃ©sentation des composants matÃ©riels
 ----------------------------------------
-4.1 Le microcontrôleur
+4.1 Le microcontrÃ´leur
 ----------------------------------------
-Le microcontrôleur est un circuit intégré (ou IC Integrated Circuit) dont les 
-tâches principales sont :
-	• Le traitement des informations,
-	• Le pilotage des périphériques connectés sur ses broches.
+Le microcontrÃ´leur est un circuit intÃ©grÃ© (ou IC Integrated Circuit) dont les 
+tÃ¢ches principales sont :
+	â€¢ Le traitement des informations,
+	â€¢ Le pilotage des pÃ©riphÃ©riques connectÃ©s sur ses broches.
 
-Notre choix s’est porté sur la version Arduino Mega2560, qui dispose de la 
-quantité de mémoire suffisante pour faire tourner le programme. 
+Notre choix sâ€™est portÃ© sur la version Arduino Mega2560, qui dispose de la 
+quantitÃ© de mÃ©moire suffisante pour faire tourner le programme. 
 
-Remarque : le modèle UNO, reste utilisable, à condition de renoncer à 
-l’acquisition des données GPS.
+Remarque : le modÃ¨le UNO, reste utilisable, Ã  condition de renoncer Ã  
+lâ€™acquisition des donnÃ©es GPS.
 
 https://www.arduino.cc/en/Main/ArduinoBoardMega2560
 
 -----------------------------------------
-4.2 Le convertisseur analogique-numérique
+4.2 Le convertisseur analogique-numÃ©rique
 -----------------------------------------
-Le convertisseur analogique numérique CAN (ou ADC Analog to Digital Converter) 
-est un dispositif électronique qui traduit des signaux analogiques en données 
-numériques.
+Le convertisseur analogique numÃ©rique CAN (ou ADC Analog to Digital Converter) 
+est un dispositif Ã©lectronique qui traduit des signaux analogiques en donnÃ©es 
+numÃ©riques.
 
-Les entrées des CAN acceptent généralement deux modes de fonctionnement :
-	• Single Ended : tension mesurée sur un seul fil, avec pour référence la 
+Les entrÃ©es des CAN acceptent gÃ©nÃ©ralement deux modes de fonctionnement :
+	â€¢ Single Ended : tension mesurÃ©e sur un seul fil, avec pour rÃ©fÃ©rence la 
 	masse du montage. 
-	• Différentiel : tension mesurée entre entre deux fils ; les interférences, 
-	présentes sur les deux voies, ne sont donc pas prises en compte.
+	â€¢ DiffÃ©rentiel : tension mesurÃ©e entre entre deux fils ; les interfÃ©rences, 
+	prÃ©sentes sur les deux voies, ne sont donc pas prises en compte.
 	
-Le convertisseur ADS1115 (16 bits de résolution) est ici utilisé dans sa version
-«breakout Board » par la société Adafruit :
+Le convertisseur ADS1115 (16 bits de rÃ©solution) est ici utilisÃ© dans sa version
+Â«breakout Board Â» par la sociÃ©tÃ© Adafruit :
 
 https://www.adafruit.com/product/1085
 
 -------------------------
 4.3 Le Clavier analogique
 -------------------------
-périphérique proposé par Sparkfun (VKey PRT12080 )
+pÃ©riphÃ©rique proposÃ© par Sparkfun (VKey PRT12080 )
 
 https://www.sparkfun.com/products/12080
 
@@ -114,26 +112,26 @@ Mapping du clavier :
 #############################
 
 ---------------------
-4.4 Ecran LCD RVB I²C
+4.4 Ecran LCD RVB IÂ²C
 ---------------------
-Ecran de 2 lignes de 16 caractères, qui affiche les informations de paramétrage 
-et les menus. Un rétroéclairage peut être activé.
+Ecran de 2 lignes de 16 caractÃ¨res, qui affiche les informations de paramÃ©trage 
+et les menus. Un rÃ©troÃ©clairage peut Ãªtre activÃ©.
 
 http://wiki.seeed.cc/Grove-LCD_RGB_Backlight/
 
 --------------
 4.5 Module RTC
 --------------
-L’horloge RTC (Real Time Clock) indique l'heure à la nanoseconde près. La carte 
-proposée au format Grove par la société Seeed ,dont le composant central est un 
+Lâ€™horloge RTC (Real Time Clock) indique l'heure Ã  la nanoseconde prÃ¨s. La carte 
+proposÃ©e au format Grove par la sociÃ©tÃ© Seeed ,dont le composant central est un 
 circuit DS1307.
 
 http://wiki.seeed.cc/Grove-RTC/
 
 --------------------------------------
-4.6 Lecteur de carte µSD au format SPI
+4.6 Lecteur de carte ÂµSD au format SPI
 --------------------------------------
-Support de stockage utilisé pour sauvegarder toutes les données au fil des 
+Support de stockage utilisÃ© pour sauvegarder toutes les donnÃ©es au fil des 
 acquisitions.
 
 https://www.adafruit.com/product/254
@@ -144,12 +142,12 @@ https://www.adafruit.com/product/254
 -------------
 
 |------------------------------------------------------------------------------|
-|       Périphérique      |   Connexion et alimentation    | Protocole utilisé |
+|       PÃ©riphÃ©rique      |   Connexion et alimentation    | Protocole utilisÃ© |
 |------------------------------------------------------------------------------|
 | Clavier                 | + -> 5 Volts et GND (masse)    | Analogique        |
-|                         | Out -> Entrée Arduino A0       |                   |
+|                         | Out -> EntrÃ©e Arduino A0       |                   |
 |------------------------------------------------------------------------------|
-| Option (GPS Adafruit)   | Vin (5Volts) et GND (masse)    | Série             |
+| Option (GPS Adafruit)   | Vin (5Volts) et GND (masse)    | SÃ©rie             |
 |                         | TX -> RX1 Arduino              |                   |
 |                         | RX -> TX1 Arduino              |                   |
 |------------------------------------------------------------------------------|
@@ -160,15 +158,15 @@ https://www.adafruit.com/product/254
 |                         | CS -> port 53 (SS)             |                   |
 |------------------------------------------------------------------------------|
 | ADS1115 (Adafruit)      | VDD -> 5 Volts et GND (masse)  |                   |
-|                         | SCL -> port 21 (SCL)           | I²C               |
+|                         | SCL -> port 21 (SCL)           | IÂ²C               |
 |                         | SDA -> port 20 (SDA)           | (Adr : 0x48)      |
 |                         | ADR -> GND                     |                   |
 |------------------------------------------------------------------------------|
-| Module RTC (Grove) 	  | VDD -> 5 Volts et GND (masse)  | I²C               |
+| Module RTC (Grove) 	  | VDD -> 5 Volts et GND (masse)  | IÂ²C               |
 |                         | SCL -> port 21 (SCL)           |                   |
 |                         | SDA -> port 20 (SDA)           |                   |
 |------------------------------------------------------------------------------|
-| Ecran LCD (Grove) 	  | VDD -> 5 Volts et GND (masse)  | I²C               |
+| Ecran LCD (Grove) 	  | VDD -> 5 Volts et GND (masse)  | IÂ²C               |
 |                         | SCL -> port 21 (SCL)           |                   |
 |                         | SDA -> port 20 (SDA)           |                   |
 |------------------------------------------------------------------------------|
