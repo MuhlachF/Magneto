@@ -85,11 +85,10 @@ Version : 0.24 (2017/06/15) -> Modification de la valeur du retro eclairage
 Version : 0.25 (2017/07/18) -> Refactoring de codes / acquisition des mesures 
 Version : 0.26 (2017/07/18) -> Affichage des conversions en temps réel
 Version : 0.27 (2017/07/19) -> Corrections bugs affichage mineurs
+Version : 0.28 (2017/07/19) -> Nouvelle unité de mesure adpotée : cm au lieu du m
                                   
-  A faire : Saisie des valeurs OA et OM en cm
-            Longueur profil prévoir Xmin et Xmax valeurs négatives point suivant
+  A faire : Longueur profil prévoir Xmin et Xmax valeurs négatives point suivant
             Modifier le comportement en cas de non saisie -> retourner la valeur par défaut ajouter argument par défaut dans les fonctions valeurNum et valeurFloat
-            Verififier calcul Dip Dip
             Acquisition des données suivant profil
             Acquisition des données suivant carte / balayage -> aller-retour
             Intégration de l'heure à partir du module RTC + menu de paramétrage de l'heure
@@ -104,7 +103,7 @@ Version : 0.27 (2017/07/19) -> Corrections bugs affichage mineurs
             
 */
 #define VERSION_MAJEURE 0
-#define VERSION_MINEURE 27
+#define VERSION_MINEURE 28
 
 /*
   DESCRIPTION DES CONNEXIONS
@@ -284,7 +283,7 @@ long distanceA = 0;
 /*
  * VARIABLES SPECIFIQUES DIPOLE-DIPOLE
  */
-double distanceElectrodesA = 1.0;
+long distanceElectrodesA = 10;        // Distance entre electrodes en cm
 int valeurN = 1;
 
 /*
@@ -340,7 +339,7 @@ void setup()
   checkCard = SD.begin(CHIP_SELECT);
   delay (500);
 
-  lcd.print("MAGNETO V"+String(VERSION_MAJEURE)+"."+String(VERSION_MINEURE));
+  lcd.print("SOND ELEC V"+String(VERSION_MAJEURE)+"."+String(VERSION_MINEURE));
   delay(1000);
   
   /*
@@ -608,12 +607,7 @@ void affichageMenuConfiguration()
     if ((choix.equals("5"))&&(choixMenuConfiguration == 4)) 
     {
       String Tampon;
-      Tampon=LectureValeurFloat("Dist a(m) :"+String(distanceElectrodesA));
-
-      char carray[Tampon.length() + 1];           // Ici, on cherche à convertir un objet String en double
-      Tampon.toCharArray(carray, sizeof(carray)); 
-      distanceElectrodesA = atof(carray);   
-      
+      distanceElectrodesA=(LectureValeurNum("Dist a(cm):"+String(distanceElectrodesA))).toInt();      
       valeurN = (LectureValeurNum("Valeur N :"+String(valeurN))).toInt();
     }
     /*****************************************************/
@@ -1173,10 +1167,10 @@ String mesuresSchlumberger(int numeroMesure)
   String tampon;                      // Collecte les informations à sauvegarder
   double rhoa;                         // Variable dédié au calcul de Rhoa
   String rhoaStr;                     // Conversion de la Rhoa en chaîne de caractères
-  int positionnementX;                 // Variables utilisées pour le positionnement manuel
-  int positionnementY;                 // Variables utilisées pour le positionnement manuel
+  long positionnementX;                 // Variables utilisées pour le positionnement manuel
+  long positionnementY;                 // Variables utilisées pour le positionnement manuel
   
-  distanceOA = (LectureValeurNum("Dist OA(m):")).toInt();
+  distanceOA = (LectureValeurNum("Distance OA(cm):")).toInt();
   distanceOA = constrain (distanceOA,1,DISTANCE_OA_MAX);
 
    /* 
@@ -1184,8 +1178,8 @@ String mesuresSchlumberger(int numeroMesure)
    */
    if (positionnement == 1)    // Positionnement manuel
    {
-    positionnementX = (LectureValeurNum("Position X(m) :")).toInt();
-    positionnementY = (LectureValeurNum("Position Y(m) :")).toInt();
+    positionnementX = (LectureValeurNum("Position X(cm):")).toInt();
+    positionnementY = (LectureValeurNum("Position Y(cm):")).toInt();
    }
    
   lancementAcquisition();
@@ -1193,10 +1187,10 @@ String mesuresSchlumberger(int numeroMesure)
   /*
    * Calcul de la résistivité apparente Rhoa
    */
-  rhoa = PI * (double(distanceOA)*double(distanceOA) - double(distanceOM)*double(distanceOM)) / (2 * double(distanceOM)) * (tensionCanBus1 / intensiteDeduiteCanBus2);
+  rhoa = PI * (double(distanceOA)/100*double(distanceOA)/100 - double(distanceOM)/100*double(distanceOM)/100) / (2 * double(distanceOM)/100) * (tensionCanBus1 / intensiteDeduiteCanBus2);
 
   // Conversion des données en chaine de caractères
-  rhoaStr = String(rhoa,PRECISION);
+  rhoaStr = String(rhoa,2);
 
   affichageCalculs (tensionCanBus1Str,intensiteDeduiteCanBus2Str,rhoaStr);
 
@@ -1282,8 +1276,8 @@ String mesuresDipDip(int numeroMesure)
   String tampon;                      // Collecte les informations à sauvegardes
   double rhoa;                        // Variable dédié au calcul de Rhoa
   String rhoaStr;                     // Conversion de Rhoa en chaîne de caractères
-  int positionnementX;                // Variables utilisées pour le positionnement manuel
-  int positionnementY;                // Variables utilisées pour le positionnement manuel
+  long positionnementX;                // Variables utilisées pour le positionnement manuel
+  long positionnementY;                // Variables utilisées pour le positionnement manuel
 
     
    /* 
@@ -1291,8 +1285,8 @@ String mesuresDipDip(int numeroMesure)
    */
    if (positionnement == 1)    // Positionnement manuel
    {
-    positionnementX = (LectureValeurNum("Position X(m) :")).toInt();
-    positionnementY = (LectureValeurNum("Position Y(m) :")).toInt();
+    positionnementX = (LectureValeurNum("Position X(cm) :")).toInt();
+    positionnementY = (LectureValeurNum("Position Y(cm) :")).toInt();
    }
   
   lancementAcquisition();
@@ -1300,7 +1294,7 @@ String mesuresDipDip(int numeroMesure)
   /*
    * Calcul de la résisitivité apparente
    */
-  rhoa = PI * distanceElectrodesA * valeurN * (valeurN + 1)*(valeurN + 2) * (tensionCanBus1 / intensiteDeduiteCanBus2);
+  rhoa = PI * double(distanceElectrodesA)/100 * valeurN * (valeurN + 1)*(valeurN + 2) * (tensionCanBus1 / intensiteDeduiteCanBus2);
     
   // Conversion des données en chaine de caractères
   rhoaStr = String(rhoa,PRECISION);
@@ -1345,7 +1339,7 @@ void affichageCalculs(String tensionU1, String intensiteI2, String resistanceApp
   lcd.clear();
   lcd.print("Rhoa (approx) :");
   lcd.setCursor(0,1);
-  lcd.print(resistanceApp+" Ohms");
+  lcd.print(resistanceApp+" Ohms/m");
   pause();
  }
 /*****************************************/
@@ -1370,7 +1364,7 @@ bool verifFile(String identFichier)
     lcd.print("FILE : "+identFichier);
     lcd.setCursor(0,1);
     lcd.print("TROUVE");
-    delay (2000);
+    pause();
     return 1;
   }
   else
@@ -1378,7 +1372,7 @@ bool verifFile(String identFichier)
     lcd.print("FILE : "+identFichier);
     lcd.setCursor(0,1);
     lcd.print("NON TROUVE");
-    delay (2000);
+    pause();
     return 0;
   }
 }
@@ -1525,7 +1519,7 @@ void lancementMesures()
             flux = flux+"\nINTENSITE I2 CALCULEE, FACTEUR DE CONVERSION :"+facteurConversion;
          }
 
-         flux = flux+"\n\n"+"ID MESURE, DISTANCE AB(M), DISTANCE MN(M), RHOA(INDICATION SEULEMENT en Ohms !), TENSION U1(mV), TENSION U2 (mV), COUTANT I2(mA), POSITION (X,Y) OU GPS\n";
+         flux = flux+"\n\n"+"ID MESURE, DISTANCE AB(cm), DISTANCE MN(cm), RHOA(Ohms/m), TENSION U1(mV), TENSION U2 (mV), COUTANT I2(mA), POSITION (X,Y) OU GPS\n";
          
          Serial.print(flux);
          // AJOUTER L'OPTION GPS
@@ -1536,7 +1530,7 @@ void lancementMesures()
         lcd.setCursor(0,1);
         lcd.print("Schlumberger");
         pause();      
-        distanceOM = (LectureValeurNum("Distance(m) OM :"+String(distanceOM))).toInt(); 
+        distanceOM = (LectureValeurNum("Distance OM(cm) :"+String(distanceOM))).toInt(); 
         distanceOM = constrain (distanceOM,1,DISTANCE_OM_MAX);
 
         while (true)
@@ -1581,7 +1575,7 @@ void lancementMesures()
             flux = flux+"\nINTENSITE I2 CALCULEE, FACTEUR DE CONVERSION :"+facteurConversion;
          }
 
-         flux = flux+"\n\n"+"ID MESURE, DISTANCE A(M), RHOA(INDICATION SEULEMENT en Ohms !), TENSION U1(mV), TENSION U2 (mV), COUTANT I2(mA)"+"\n";
+         flux = flux+"\n\n"+"ID MESURE, DISTANCE A(cm), RHOA(Ohms/m), TENSION U1(mV), TENSION U2 (mV), COUTANT I2(mA)"+"\n";
 
          // AJOUTER L'OPTION GPS
          saveData(identifiant,flux);
@@ -1622,7 +1616,7 @@ void lancementMesures()
          */
          int i=1;
          String flux =  "IDENTIFIANT DES MESURES : "+identifiant+"\n"+"SONDAGE MESURES SPECIFIQUES : MESURE DIPOLE-DIPOLE"+"\n"+"\nCONSTANTES DEFINIEES :"+
-                        "\nDISTANCE ENTRE ECLECTRODES (cm): "+distanceElectrodesA+"\nVALEUR DE N : "+valeurN;
+                        "\nDISTANCE ENTRE ECLECTRODES(cm): "+distanceElectrodesA+"\nVALEUR DE N : "+valeurN;
                  
          if (utilisationCoeffI == true)
          {
@@ -1633,7 +1627,7 @@ void lancementMesures()
             flux = flux+"\nINTENSITE I2 CALCULEE, FACTEUR DE CONVERSION :"+facteurConversion;
          }
 
-         flux = flux+"\n\n"+"ID MESURE, RHOA(INDICATION SEULEMENT en Ohms !), TENSION U1(mV), TENSION U2 (mV), COUTANT I2(mA)"+"\n";
+         flux = flux+"\n\n"+"ID MESURE, RHOA(Ohms/m), TENSION U1(mV), TENSION U2 (mV), COUTANT I2(mA)"+"\n";
 
          // AJOUTER L'OPTION GPS
          saveData(identifiant,flux);
