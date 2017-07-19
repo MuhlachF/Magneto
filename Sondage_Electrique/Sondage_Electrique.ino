@@ -84,18 +84,17 @@
 Version : 0.24 (2017/06/15) -> Modification de la valeur du retro eclairage                           
 Version : 0.25 (2017/07/18) -> Refactoring de codes / acquisition des mesures 
 Version : 0.26 (2017/07/18) -> Affichage des conversions en temps réel
+Version : 0.27 (2017/07/19) -> Corrections bugs affichage mineurs
                                   
   A faire : Saisie des valeurs OA et OM en cm
-            Possibilité de voir les mesures en temps réel avant acquisition
             Longueur profil prévoir Xmin et Xmax valeurs négatives point suivant
             Modifier le comportement en cas de non saisie -> retourner la valeur par défaut ajouter argument par défaut dans les fonctions valeurNum et valeurFloat
-            Refactoring de codes pour les fonctions d'acquisition electrique 
             Verififier calcul Dip Dip
             Acquisition des données suivant profil
             Acquisition des données suivant carte / balayage -> aller-retour
             Intégration de l'heure à partir du module RTC + menu de paramétrage de l'heure
             Intégration des mesures magnétiques (distance des sondes)
-            Sauvegarde et lecture du fichier de configuration
+            Sauvegarde et lecture du fichier de configuration en EEPROM
             Ajout de la fonction de reinitilisation des valeurs (valeurs par défaut)
             //Ajout d'un bip sonore métronome + Bip de fin de des mesures
             //Ajouter un menu pour régler la vitesse du métronome
@@ -105,7 +104,7 @@ Version : 0.26 (2017/07/18) -> Affichage des conversions en temps réel
             
 */
 #define VERSION_MAJEURE 0
-#define VERSION_MINEURE 25
+#define VERSION_MINEURE 27
 
 /*
   DESCRIPTION DES CONNEXIONS
@@ -150,14 +149,14 @@ Version : 0.26 (2017/07/18) -> Affichage des conversions en temps réel
 #define WIRE_CLAVIER A0                   // Le clavier est connecté sur le port A0 de l'Arduino
 #define TOLERANCE_ANALOG_CLAVIER 15       // Tolérance appliquée au clavier analogique par seuil (boutons 1 à 12)
 #define VITESSE_ECHANTILLONNAGE_MAX 200   // Vitesse d'échantillonage maximum pour les mesures profil et carte
-#define VALEUR_I_MAX 100000               // valeur de I max en mA
-#define DISTANCE_OM_MAX 10000             // Distance MN Max en m (mesures Schlumberger)
-#define DISTANCE_OA_MAX 10000             // Distance AB Max en m (mesures Schlumberger)
-#define DISTANCE_A_MAX 10000              // Distance A Max en m (mesures Wenner)
-#define NB_MESURES_MAX 200                // Nombre de sondage max (Schlumberger, Wenner et Dipole-Dipole)
-#define DISTANCE_X_MAX 1000               // Distance / X MAX en m (profil et carte
+#define VITESSE_ACQUISITION 200           // Vitesse d'acquisition des mesures 200ms
+#define VALEUR_I_MAX 10000                // valeur de I max en mA
+#define DISTANCE_OM_MAX 100000            // Distance MN Max en cm (mesures Schlumberger)
+#define DISTANCE_OA_MAX 100000            // Distance AB Max en cm (mesures Schlumberger)
+#define DISTANCE_A_MAX 100000             // Distance A Max en cm (mesures Wenner)
+#define DISTANCE_X_MAX 100000             // Distance / X MAX en cm (profil et carte) 
 #define NB_MESURES_X_MAX 1000             // Nombre de mesures max sur X
-#define DISTANCE_Y_MAX 1000               // Distance / Y MAX en m (profil et carte
+#define DISTANCE_Y_MAX 100000             // Distance / Y MAX en cm (profil et carte)
 #define NB_MESURES_Y_MAX 1000             // Nombre de mesures max sur Y
 #define KEYBOARD_FREQ_MIN 100             // Frequence min du clavier
 #define KEYBOARD_FREQ_MAX 500             // Frequence max du clavier
@@ -189,7 +188,7 @@ File monFichier;                          // l'objet monFichier sera utilisé po
 String LectureValeurNum(String affichage);            // Fonction permettant la lecture d'un nombre entier saisi au clavier
 String LectureValeurFloat(String affichage);          // Fonction permettant la lecture d'un nombre décimal saisi au clavier
 String lectureClavierNum();
-bool pause();                                         // Fonction permettant d'effectuer une pause dans le programme (attente appui sur ENTER)
+void pause();                                         // Fonction permettant d'effectuer une pause dans le programme (attente appui sur ENTER)
 void affichageMenuPrincipal();                        // Affichage du menu principal
 void affichageMenuConfiguration();                    // Affichage du sous-menu permettant de configurer l'instrument de mesures
 int affichageMenuMode();                              // Affichage des types de sondage (sondages spécifiques, selon profil ou carte)
@@ -333,7 +332,7 @@ void setup()
    * CONFIGURATION ECRAN LCD
    */
   pinMode(SS, OUTPUT);
-  
+
   lcd.begin(16, 2);
   lcd.setRGB(valeurRetro,valeurRetro,valeurRetro);
   delay (2000);
@@ -347,7 +346,7 @@ void setup()
   /*
    * CONFIGURATION CARTE SD
    */
-  lcd.setCursor(2,1);
+  lcd.setCursor(0,1);
   lcd.print("CHECK SD CARD...");
   delay (1000);
   lcd.clear();
@@ -645,7 +644,7 @@ void affichageMenuConfiguration()
     if ((choix.equals("5"))&&(choixMenuConfiguration == 6))
     {
       String valeurDeltaX = calculDelta (DistanceXMaxProfil,nbMesuresXProfil,DeltaXProfil,DISTANCE_X_MAX,NB_MESURES_X_MAX,"X");
-      lcd.setCursor(2,1);
+      lcd.setCursor(0,1);
       LectureValeurNum("DELTA X="+valeurDeltaX);
     }
     /***********************************/
@@ -1043,7 +1042,7 @@ String LectureValeurNum(String affichage)
 /*********************************************/
 /* BLOC : PAUSE PROGRAMME / APPUI SUR TOUCHE */
 /*********************************************/
-bool pause()
+void pause()
 {
  String touche;
  bool validation = false;
@@ -1068,7 +1067,6 @@ bool pause()
         }
      }
    }
-   return 1;
 }
 /*************************************************/
 /* FIN BLOC : PAUSE PROGRAMME / APPUI SUR TOUCHE */
@@ -1231,7 +1229,7 @@ String mesuresWenner(int numeroMesure)
   int positionnementX;                 // Variables utilisées pour le positionnement manuel
   int positionnementY;                 // Variables utilisées pour le positionnement manuel
   
-  distanceA = (LectureValeurNum("Dist A:")).toInt();
+  distanceA = (LectureValeurNum("Distance A(cm):")).toInt();
   distanceA = constrain (distanceA,1,DISTANCE_A_MAX);
   
    /* 
@@ -1248,7 +1246,7 @@ String mesuresWenner(int numeroMesure)
   /*
    * Calcul de la résisitivité apparente
    */
-  rhoa = 2 * PI * distanceA * (tensionCanBus1 / intensiteDeduiteCanBus2);
+  rhoa = 2 * PI * float(distanceA)/100 * (tensionCanBus1 / intensiteDeduiteCanBus2);
     
   // Conversion des données en chaine de caractères
   rhoaStr = String(rhoa,PRECISION);
@@ -1339,14 +1337,14 @@ void affichageCalculs(String tensionU1, String intensiteI2, String resistanceApp
 {
   lcd.clear();
   lcd.print("U1 : "+tensionU1+"mV");
-  lcd.setCursor(2,1);
+  lcd.setCursor(0,1);
   lcd.print("I2 : "+intensiteI2+"mA");
   pause();
 
     // Affichage de la résistance apparente
   lcd.clear();
   lcd.print("Rhoa (approx) :");
-  lcd.setCursor(2,1);
+  lcd.setCursor(0,1);
   lcd.print(resistanceApp+" Ohms");
   pause();
  }
@@ -1370,7 +1368,7 @@ bool verifFile(String identFichier)
   if (SD.exists(identFichier))
   {
     lcd.print("FILE : "+identFichier);
-    lcd.setCursor(2,1);
+    lcd.setCursor(0,1);
     lcd.print("TROUVE");
     delay (2000);
     return 1;
@@ -1378,7 +1376,7 @@ bool verifFile(String identFichier)
   else
   {
     lcd.print("FILE : "+identFichier);
-    lcd.setCursor(2,1);
+    lcd.setCursor(0,1);
     lcd.print("NON TROUVE");
     delay (2000);
     return 0;
@@ -1398,7 +1396,7 @@ void lancementAcquisition()
 {
   //LectureValeurNum("PRESS ENT TO START");  // Déclenchement des mesures après un appui sur ENTER
   int AnalogClavier = 0;
-  
+    
   while (!((AnalogClavier >= seuilsAnalogClavier[0] - TOLERANCE_ANALOG_CLAVIER) && (AnalogClavier <= seuilsAnalogClavier[0] + TOLERANCE_ANALOG_CLAVIER)))
   {
     lcd.clear();
@@ -1410,15 +1408,16 @@ void lancementAcquisition()
     if (utilisationCoeffI)                                            // La valeur de I est fixée par l'utilisateur
     {
       intensiteDeduiteCanBus2 = intensiteFixee;
+      tensionCanBus2Str = "I FIXEE";
     }
     else                                                              // Sinon la mesure de I est effectuée via le Shunt
     {
       tensionCanBus2 = double(ads.readADC_Differential_2_3()) * multiplier;             // Mesure de la tension V2 du Shunt pour en déduire I2
+      tensionCanBus2Str = String(tensionCanBus2,PRECISION);
+      intensiteDeduiteCanBus2 = tensionCanBus2 * facteurConversion; 
     }   
-    tensionCanBus2Str = String(tensionCanBus2,PRECISION);
-    intensiteDeduiteCanBus2 = tensionCanBus2 * facteurConversion; 
     intensiteDeduiteCanBus2Str = String(intensiteDeduiteCanBus2,PRECISION);              
-    lcd.setCursor(2,1);
+    lcd.setCursor(0,1);
     lcd.print("I2:"+intensiteDeduiteCanBus2Str+"mA");
 
     
@@ -1484,7 +1483,7 @@ void lancementMesures()
   else  
     {
       lcd.print("CREATION DE : ");
-      lcd.setCursor(2,1);
+      lcd.setCursor(0,1);
       lcd.print(identifiant);
       monFichier = SD.open(identifiant, FILE_WRITE);
       monFichier.close();
@@ -1534,7 +1533,7 @@ void lancementMesures()
 
         // ACQUISITION DES DONNEES
  
-        lcd.setCursor(2,1);
+        lcd.setCursor(0,1);
         lcd.print("Schlumberger");
         pause();      
         distanceOM = (LectureValeurNum("Distance(m) OM :"+String(distanceOM))).toInt(); 
@@ -1587,7 +1586,7 @@ void lancementMesures()
          // AJOUTER L'OPTION GPS
          saveData(identifiant,flux);
 
-         lcd.setCursor(2,1);
+         lcd.setCursor(0,1);
          lcd.print("Wenner");
          pause();
 
@@ -1623,7 +1622,7 @@ void lancementMesures()
          */
          int i=1;
          String flux =  "IDENTIFIANT DES MESURES : "+identifiant+"\n"+"SONDAGE MESURES SPECIFIQUES : MESURE DIPOLE-DIPOLE"+"\n"+"\nCONSTANTES DEFINIEES :"+
-                        "\nDISTANCE ENTRE ECLECTRODES : "+distanceElectrodesA+"\nVALEUR DE N : "+valeurN;
+                        "\nDISTANCE ENTRE ECLECTRODES (cm): "+distanceElectrodesA+"\nVALEUR DE N : "+valeurN;
                  
          if (utilisationCoeffI == true)
          {
@@ -1639,7 +1638,7 @@ void lancementMesures()
          // AJOUTER L'OPTION GPS
          saveData(identifiant,flux);
 
-           lcd.setCursor(2,1);
+           lcd.setCursor(0,1);
            lcd.print("Dip-Dipole");
            pause();
 
