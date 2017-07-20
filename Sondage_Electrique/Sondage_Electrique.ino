@@ -89,6 +89,7 @@ Version : 0.27 (2017/07/19) -> Corrections bugs affichage mineurs
 Version : 0.28 (2017/07/19) -> Nouvelle unité de mesure adpotée : cm au lieu du m
 Version : 0.29 (2017/07/19) -> refactoring de codes et optmisation mémoire / flux de sortie
 Version : 0.30 (2017/07/20) -> Ajout de la fonction inversion / Profil et Carte
+Version : 0.31 (2017/07/20) -> Réinitiatilisation des valeurs par défaut dans le fichier de configuration
                                   
   A faire : Modifier le comportement en cas de non saisie -> retourner la valeur par défaut ajouter argument par défaut dans les fonctions valeurNum et valeurFloat
             Acquisition des données suivant profil
@@ -104,8 +105,15 @@ Version : 0.30 (2017/07/20) -> Ajout de la fonction inversion / Profil et Carte
             //Intégration des mesures magnétiques (distance des sondes)
             
 */
+
+/*
+ * STRUCTURE DE l'EEPROM
+ * 
+ * 
+ * 
+ */
 #define VERSION_MAJEURE 0
-#define VERSION_MINEURE 29
+#define VERSION_MINEURE 31
 /*
   DESCRIPTION DES CONNEXIONS
   
@@ -128,7 +136,7 @@ Version : 0.30 (2017/07/20) -> Ajout de la fonction inversion / Profil et Carte
   ######################################
   #    7     #   8(BAS)   #     9      #
   ######################################
-  #CLS / ESC et , #      0     #    OK      #
+  #CLS / ESC et , #   0   #    OK      #
   ######################################
 */
 
@@ -140,6 +148,7 @@ Version : 0.30 (2017/07/20) -> Ajout de la fonction inversion / Profil et Carte
 #include <SPI.h>                // Librairie dédiée à aux communications SPI
 #include <SD.h>                 // Librairie de gestion de la carte SD
 #include <Adafruit_ADS1015.h>   // Gestion du CAN / ici le module ADS1115 est utilisé pour les conversions
+#include <EEPROM.h>             // Librairie relative à l'EEPROM de l'Arduino
 //#include <Adafruit_GPS.h>
 //#include <SoftwareSerial.h>
 
@@ -180,7 +189,7 @@ String flux;
 /*
  * DESCRIPTEUR DE FICHIER
  */
-File monFichier;                          // l'objet monFichier sera utilisé pour l'enregistrement sur 
+File monFichier;                          // l'objet monFichier sera utilisé pour l'enregistrement sur carte SD
 
 /*
  * DECLARATION DES FONCTIONS
@@ -191,6 +200,9 @@ String lectureClavierNum();
 void pause();                                           // Fonction permettant d'effectuer une pause dans le programme (attente appui sur ENTER)
 void affichageMenuPrincipal();                          // Affichage du menu principal
 void affichageMenuConfiguration();                      // Affichage du sous-menu permettant de configurer l'instrument de mesures
+void initEEPROM();                                      // Réinitialisation des valeurs par défaut
+void initVar();                                         // Reinit des variables
+void enregistrementConfig();                            // Sauvegarde de la configuration dans l'EEPROM
 int affichageMenuMode();                                // Affichage des types de sondage (sondages spécifiques, selon profil ou carte)
 int affichageMenuConfSpec(int navBasse,int navHaute);   // Affichage des modes de mesures (Schlumberger, Wenner, Dipôle-Dipôle, ou magnetique)
 int affichageMenuMesureI();                             // Sous-menu permettant de fixer I ou de le mesurer via la resistance de Shunt
@@ -202,7 +214,7 @@ void lancementMesures();                                // Lancement des mesures
 String mesuresSchlumberger(int numeroMesure);           // Lancement des mesures selon le modèle Schlumberger
 String mesuresWenner(int numeroMesure);                 // Lancement des mesures selon le modèle Wenner
 String mesuresDipDip(int numeroMesure);                 // Lancement des mesures selon le modèle Dipole-Dipole
-String alimentationFluxSpecifique (String typeSondage); // Enregistrement de l'entête sur sur carte µSD
+void alimentationFluxSpecifique (String typeSondage);   // Enregistrement de l'entête sur sur carte µSD
 void lancementAcquisition();                            // Acquisition et conversion 16 bits
 
 String calculDelta (long &ValeurXMin, long &ValeurXmax, long &DistanceProfil, int &nbValeur, double &delta, String axe); // Fonction qui permet de calculer les valeurs Delta
@@ -257,17 +269,11 @@ long timerNow = 0;                     // Variable utilisé pour le Timer du cla
 String identifiant = "000000";         // Nom du fichier par défaut
 int mode = 0;                          // 0->sondage, 1->suivant profil, 2->suivant carte
 int confSpecifique = 0;                // 0->Schlumberger, 1-> Wenner, 2-> Dipôle-Dipôle, 3->Magnetique
-int mesureI = 0;                       // 0->I mesuree, 1-> I determinee
-int positionnement = 0;                // 0->Aucun, 1->Positionnement manuel, 2->GPS
-long keyboardTimer = 200;              // frequence du clavier par défaut
 bool checkCard;
 
 /* 
- *  VARIABLES DE GESTION DES SONDAGES ELECTRIQUES
+ *  VARIABLES MESURES SONDAGES ELECTRIQUES
  */
-bool utilisationCoeffI = false;        // Si utilisationCoeff == false alors I est mesuré 
-double intensiteFixee = 1.0;           // sinon intensiteFixee est utilisée dans les calculs
-double facteurConversion = 1.0;        // Permet de calculer I2 à partir de U2 du Shunt
 double tensionCanBus1;                 // Conversion de la valeur numérique (16 bits) en valeur décimale pour U1
 double tensionCanBus2;                 // Conversion de la valeur numérique (16 bits) en valeur décimale pour U2
 double intensiteDeduiteCanBus2;        // Calcul de l'intensité I2 déduite de U2 
@@ -275,6 +281,7 @@ String tensionCanBus1Str;              // Conversion de la tension U1 en chaîne
 String tensionCanBus2Str;              // Conversion de la tension U2 en chaîne de caractères
 String intensiteDeduiteCanBus2Str;     // Conversion de l'intensité I2 en chaîne de caractères
 
+  
 /*
  * VARIABLES SPECIFIQUES SCHLUMBERGER ET WENNER
  */
@@ -283,17 +290,31 @@ long distanceOM = 0;
 long distanceA = 0;
 
 /*
- * VARIABLES SPECIFIQUES DIPOLE-DIPOLE
+ * CONFIGURATION GLOBALES
  */
-long distanceElectrodesA = 10;        // Distance entre electrodes en cm
-int valeurN = 1;
+int mesureI = 0;                        // 0->I mesuree, 1-> I determinee
+int positionnement = 0 ;                // 0->Aucun, 1->Positionnement manuel, 2->GPS;
+long keyboardTimer = 200;               // frequence du clavier par défaut;
+
+/* 
+ *  VARIABLES DE GESTION DES SONDAGES ELECTRIQUES
+ */
+bool utilisationCoeffI = false;        // Si utilisationCoeff == false alors I est mesuré ;
+double intensiteFixee = 1.0;             // sinon intensiteFixee est utilisée dans les calculs;
+double facteurConversion = 1.0;          // Permet de calculer I2 à partir de U2 du Shunt;
 
 /*
- * VARIBLES SPECIFIQUES SONDAGE MAGNETIQUE
+ * VARIABLES DE CONFIGURATION DIPOLE-DIPOLE
+ */
+long distanceElectrodesA = 10;         // Distance entre electrodes en cm;
+int valeurN = 1;
+
+ /*
+ * VARIBLES DE CONFIGURATION SONDAGE MAGNETIQUE
  */
 int hauteurCapteur1 = 0;
 int hauteurCapteur2 = 0;
-int vitesseEchantillonnage = 10;        // Utilisé en prise de mesures / profil et Carte 10Hz par défaut
+int vitesseEchantillonnage = 10;      // Utilisé en prise de mesures / profil et Carte 10Hz par défaut;
 
 /* 
  * VARIBALES DEDIEES AUX MESURES SUIVANT PROFIL 
@@ -304,7 +325,7 @@ long DistanceXProfil = 0;
 int nbMesuresXProfil = 0;
 double DeltaXProfil = 0;
 
-/* 
+ /* 
  *  VARIABLES POUR MESURES SUIVANT CARTE
  */
 long XMinCarte = 0;
@@ -318,15 +339,50 @@ double DeltaYCarte = 0;
 int nbMesuresXCarte = 0;
 int nbMesuresYCarte = 0;
 
-/*
- * VARIABLES DEDIEES A LA CONFIGURATION DU GPS
- */
-bool utilisationGps = true;
-
 /* 
  *  TABLEAU DE MAPPING DU CLAVIER
  */
 int seuilsAnalogClavier[12] = {35,75,115,155,195,235,275,315,355,395,435,475};
+
+/*
+ * DECLARATION D'UNE STRUCTURE SAUVEGARDEE EN EEPROM
+ */
+struct record
+{
+int mesureI;
+int positionnement;
+long keyboardTimer;
+
+bool utilisationCoeffI;
+double intensiteFixee;
+double facteurConversion;
+
+long distanceElectrodesA;
+int valeurN;
+
+int hauteurCapteur1;
+int hauteurCapteur2;
+int vitesseEchantillonnage;
+
+long XMinProfil;
+long XMaxProfil;
+long DistanceXProfil;
+int nbMesuresXProfil;
+double DeltaXProfil;
+
+long XMinCarte;
+long XMaxCarte;
+long YMinCarte;
+long YMaxCarte;
+long DistanceXCarte;
+long DistanceYCarte;
+double DeltaXCarte;
+double DeltaYCarte;
+int nbMesuresXCarte;
+int nbMesuresYCarte;
+};
+
+record aRec;
 
 /* ----------------------------------------------------------------------------------------------- */
 
@@ -336,6 +392,14 @@ int seuilsAnalogClavier[12] = {35,75,115,155,195,235,275,315,355,395,435,475};
 void setup() 
 {
   /*
+   * Initialisation de la structure aRec
+   */
+  
+  affectRecord();
+
+  
+ 
+   /*
    * CONFIGURATION ECRAN LCD
    */
   pinMode(SS, OUTPUT);
@@ -382,6 +446,7 @@ void setup()
    * Mode debug
    */
   Serial.begin(9600); 
+  Serial.print(aRec.distanceElectrodesA);
 }
 /**********************/
 /* FIN FONCTION SETUP */
@@ -760,8 +825,19 @@ void affichageMenuConfiguration()
      */
     if ((choix.equals("5"))&&(choixMenuConfiguration == 14))
     {
-      
+       lcd.clear();
+       lcd.print("EFFACEMENT EN COURS...");
+       for (int i = 0 ; i < EEPROM.length() ; i++) 
+       {
+          EEPROM.write(i, 0);
+       }
+       lcd.setCursor(0,1);
+       lcd.print("EFFACEMENT OK !");
+
+
+       
     }
+
     /**************************************/
     /* FIN BLOC : REINITIALISATION CONFIG */
     /**************************************/
@@ -1064,8 +1140,7 @@ String LectureValeurNum(String affichage)
                 
         if (touche.equals("ok")) // La saisie est validée
         {
-          validation = true;
-                    
+          validation = true;               
           return valeurNum;
         }
 
@@ -1508,7 +1583,7 @@ bool saveData (String identFichier,String Data)
   // 
   if (monFichier) // Si le fichier est Ok, on peut lancer les opérations d'écriture
   {  
-    monFichier.print(Data);
+
     monFichier.close(); // On ferme proprement le fichier
     return 0;
   } 
@@ -1539,7 +1614,7 @@ bool saveData (String identFichier,String Data)
          *  
          *  ID de mesure,RHOA,U1,I2,DELTA,(GPS)
          */
-String alimentationFluxSpecifique (String typeSondage)
+void alimentationFluxSpecifique (String typeSondage)
 {
   flux =  "IDENTIFIANT DES MESURES : "+identifiant+"\n"+"MESURE :"+typeSondage+"\n"+"\nCONSTANTES DEFINIEES :";  
                         
@@ -1559,12 +1634,111 @@ String alimentationFluxSpecifique (String typeSondage)
 
    lcd.setCursor(0,1);
    lcd.print(typeSondage);
+   
    pause();
 }
 
 /***********************************/
 /* FIN BLOC / ALIMENTATION DU FLUX */
 /***********************************/
+
+/* --------------------------------------------------------------------------------- */
+
+/***********************************/
+/* BLOC / SAUVEGARDE CONFIG EEPROM */
+/***********************************/
+void sauvegardeConfiguration()
+{
+  int eeAdress = 0;
+ 
+}
+
+/***************************************/
+/* FIN BLOC / SAUVEGARDE CONFIG EEPROM */
+/***************************************/
+
+/* --------------------------------------------------------------------------------- */
+
+/*************************/
+/* BLOC / INIT VARIABLES */
+/*************************/
+void initVar()
+{
+  mesureI = 0;                        
+  positionnement = 0 ;               
+  keyboardTimer = 200;             
+
+  utilisationCoeffI = false;       
+  intensiteFixee = 1.0;      
+  facteurConversion = 1.0;
+ 
+  distanceElectrodesA = 10;
+  valeurN = 1;
+
+  hauteurCapteur1 = 0;
+  hauteurCapteur2 = 0;
+  vitesseEchantillonnage = 10;
+
+  XMinProfil = 0;
+  XMaxProfil = 0;
+  DistanceXProfil = 0;
+  nbMesuresXProfil = 0;
+  DeltaXProfil = 0.0;
+ 
+  XMinCarte = 0;
+  XMaxCarte = 0;
+  YMinCarte = 0;
+  YMaxCarte = 0;
+  DistanceXCarte = 0;
+  DistanceYCarte = 0;
+  DeltaXCarte = 0;
+  DeltaYCarte = 0;
+  nbMesuresXCarte = 0;
+  nbMesuresYCarte = 0;
+}
+/*****************************/
+/* FIN BLOC / INIT VARIABLES */
+/*****************************/
+
+/* --------------------------------------------------------------------------------- */
+
+/*************************/
+/* BLOC / INIT STRUCTURE */
+/*************************/
+
+void affectRecord()
+{
+  aRec.mesureI = mesureI;
+  aRec.positionnement = positionnement;
+  aRec.keyboardTimer = keyboardTimer;
+  aRec.utilisationCoeffI = utilisationCoeffI;
+  aRec.intensiteFixee = intensiteFixee;
+  aRec.facteurConversion = facteurConversion;
+  aRec.distanceElectrodesA = distanceElectrodesA;
+  aRec.valeurN = valeurN;
+  aRec.hauteurCapteur1 = hauteurCapteur1;
+  aRec.hauteurCapteur2 = hauteurCapteur2;
+  aRec.vitesseEchantillonnage = vitesseEchantillonnage;
+  aRec.XMinProfil = XMinProfil;
+  aRec.XMaxProfil = XMaxProfil;
+  aRec.DistanceXProfil = DistanceXProfil;
+  aRec.nbMesuresXProfil = nbMesuresXProfil;
+  aRec.DeltaXProfil = DeltaXProfil;
+  aRec.XMinCarte = XMinCarte;
+  aRec.XMaxCarte = XMaxCarte;
+  aRec.YMinCarte = YMinCarte;
+  aRec.YMaxCarte = YMaxCarte;
+  aRec.DistanceXCarte = DistanceXCarte;
+  aRec.DistanceYCarte = DistanceYCarte;
+  aRec.DeltaXCarte = DeltaXCarte;
+  aRec.DeltaYCarte = DeltaYCarte;
+  aRec.nbMesuresXCarte = nbMesuresXCarte;
+  aRec.nbMesuresYCarte = nbMesuresYCarte; 
+}
+
+/*****************************/
+/* FIN BLOC / INIT STRUCTURE */
+/*****************************/
 
 /* --------------------------------------------------------------------------------- */
 
