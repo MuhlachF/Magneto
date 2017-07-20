@@ -88,9 +88,9 @@ Version : 0.26 (2017/07/18) -> Affichage des conversions en temps réel
 Version : 0.27 (2017/07/19) -> Corrections bugs affichage mineurs
 Version : 0.28 (2017/07/19) -> Nouvelle unité de mesure adpotée : cm au lieu du m
 Version : 0.29 (2017/07/19) -> refactoring de codes et optmisation mémoire / flux de sortie
+Version : 0.30 (2017/07/20) -> Ajout de la fonction inversion / Profil et Carte
                                   
-  A faire : Longueur profil prévoir Xmin et Xmax valeurs négatives point suivant
-            Modifier le comportement en cas de non saisie -> retourner la valeur par défaut ajouter argument par défaut dans les fonctions valeurNum et valeurFloat
+  A faire : Modifier le comportement en cas de non saisie -> retourner la valeur par défaut ajouter argument par défaut dans les fonctions valeurNum et valeurFloat
             Acquisition des données suivant profil
             Acquisition des données suivant carte / balayage -> aller-retour
             Intégration de l'heure à partir du module RTC + menu de paramétrage de l'heure
@@ -151,13 +151,8 @@ Version : 0.29 (2017/07/19) -> refactoring de codes et optmisation mémoire / fl
 #define VITESSE_ECHANTILLONNAGE_MAX 200   // Vitesse d'échantillonage maximum pour les mesures profil et carte
 #define VITESSE_ACQUISITION 200           // Vitesse d'acquisition des mesures 200ms
 #define VALEUR_I_MAX 10000                // valeur de I max en mA
-#define DISTANCE_OM_MAX 100000            // Distance MN Max en cm (mesures Schlumberger)
-#define DISTANCE_OA_MAX 100000            // Distance AB Max en cm (mesures Schlumberger)
-#define DISTANCE_A_MAX 100000             // Distance A Max en cm (mesures Wenner)
-#define DISTANCE_X_MAX 100000             // Distance / X MAX en cm (profil et carte) 
-#define NB_MESURES_X_MAX 1000             // Nombre de mesures max sur X
-#define DISTANCE_Y_MAX 100000             // Distance / Y MAX en cm (profil et carte)
-#define NB_MESURES_Y_MAX 1000             // Nombre de mesures max sur Y
+#define DISTANCE_MAX 1000000              // Distance MN Max en cm (mesures Schlumberger)
+#define NB_MESURES_MAX 1000               // Nombre de mesures max sur X
 #define KEYBOARD_FREQ_MIN 100             // Frequence min du clavier
 #define KEYBOARD_FREQ_MAX 500             // Frequence max du clavier
 #define LUMINOSITE_MAX 255                // Valeur maximale de la luminosité
@@ -210,7 +205,7 @@ String mesuresDipDip(int numeroMesure);                 // Lancement des mesures
 String alimentationFluxSpecifique (String typeSondage); // Enregistrement de l'entête sur sur carte µSD
 void lancementAcquisition();                            // Acquisition et conversion 16 bits
 
-String calculDelta (int &dstMaxAff, int &nbMesAff, double &deltaAff, int dstMax, int nbMesMax, String axe); // Fonction qui permet de calculer les valeurs Delta
+String calculDelta (long &ValeurXMin, long &ValeurXmax, long &DistanceProfil, int &nbValeur, double &delta, String axe); // Fonction qui permet de calculer les valeurs Delta
 bool verifFile (String identFichier);                   // Vérification de l'existance d'un fichier sur la carte SD
 bool saveData (String identFichier,String Data);        // Fonction de sauvegarde de données
 
@@ -303,19 +298,25 @@ int vitesseEchantillonnage = 10;        // Utilisé en prise de mesures / profil
 /* 
  * VARIBALES DEDIEES AUX MESURES SUIVANT PROFIL 
  */
-int DistanceXMaxProfil = 0;
+long XMinProfil = 0;
+long XMaxProfil = 0;
+long DistanceXProfil = 0;
 int nbMesuresXProfil = 0;
 double DeltaXProfil = 0;
 
 /* 
  *  VARIABLES POUR MESURES SUIVANT CARTE
  */
-int DistanceXMax = 0;
-int nbMesuresX = 0;
-double DeltaX = 0;
-int DistanceYMax = 0;
-int nbMesuresY = 0;
-double DeltaY = 0;
+long XMinCarte = 0;
+long XMaxCarte = 0;
+long YMinCarte = 0;
+long YMaxCarte = 0;
+long DistanceXCarte = 0;
+long DistanceYCarte = 0;
+double DeltaXCarte = 0;
+double DeltaYCarte = 0;
+int nbMesuresXCarte = 0;
+int nbMesuresYCarte = 0;
 
 /*
  * VARIABLES DEDIEES A LA CONFIGURATION DU GPS
@@ -341,7 +342,7 @@ void setup()
 
   lcd.begin(16, 2);
   lcd.setRGB(valeurRetro,valeurRetro,valeurRetro);
-  delay (2000);
+  delay (500);
   
   checkCard = SD.begin(CHIP_SELECT);
   delay (500);
@@ -352,20 +353,17 @@ void setup()
   /*
    * CONFIGURATION CARTE SD
    */
-  lcd.setCursor(0,1);
-  lcd.print("CHECK SD CARD...");
-  delay (1000);
-  lcd.clear();
+    lcd.clear();
   
   if (!checkCard)       // Vérifie l'état de la carte SD
   {
     lcd.print("PROBLEME CARTE SD");
-    delay (1500);
+    pause();
   }
   else
   {
     lcd.print ("CARTE SD OK");
-    delay (1500);
+    delay (1000);
   }
   verifFile("CONFIG");
   
@@ -644,7 +642,7 @@ void affichageMenuConfiguration()
      */
     if ((choix.equals("5"))&&(choixMenuConfiguration == 6))
     {
-      String valeurDeltaX = calculDelta (DistanceXMaxProfil,nbMesuresXProfil,DeltaXProfil,DISTANCE_X_MAX,NB_MESURES_X_MAX,"X");
+      String valeurDeltaX = calculDelta (XMinProfil,XMaxProfil,DistanceXProfil,nbMesuresXProfil,DeltaXProfil,"X");
       lcd.setCursor(0,1);
       LectureValeurNum("DELTA X="+valeurDeltaX);
     }
@@ -660,8 +658,8 @@ void affichageMenuConfiguration()
      */
     if ((choix.equals("5"))&&(choixMenuConfiguration == 7)) 
     {
-      calculDelta (DistanceXMax,nbMesuresX,DeltaX,DISTANCE_X_MAX,NB_MESURES_X_MAX,"X");
-      calculDelta (DistanceYMax,nbMesuresY,DeltaY,DISTANCE_Y_MAX,NB_MESURES_Y_MAX,"Y");
+      //calculDelta (DistanceXMaxCarte,nbMesuresXCarte,DeltaXCarte,DISTANCE_MAX,NB_MESURES_X_MAX,"X");
+      //calculDelta (DistanceYMaxCarte,nbMesuresYCarte,DeltaYCarte,DISTANCE_MAX,NB_MESURES_Y_MAX,"Y");
     }
     /**********************************/
     /* FIN BLOC : CONFIGURATION CARTE */
@@ -787,25 +785,84 @@ void affichageMenuConfiguration()
 /*
  * calculDelta (Distance_Maximale_renseignée, Nombre_de_mesures_renseignée, retour_calcul_Dela, tolerance_max,tolerance_nombre_mesures_max,nom de l'axe)
  */
-String calculDelta (int &dstMaxAff, int &nbMesAff, double &deltaAff, int dstMax, int nbMesMax, String axe)
+String calculDelta (long &ValeurXMin, long &ValeurXMax, long &DistanceProfil, int &nbValeur, double &delta, String axe)
 {
-  //char charVal[10]; 
   
-  dstMaxAff=(LectureValeurNum("Distance/"+axe+" :"+String(dstMaxAff))).toInt();
-  dstMaxAff = constrain (dstMaxAff,1,dstMax);
+  ValeurXMin = (LectureValeurNum("X Min (cm)/"+axe+" :"+String(ValeurXMin))).toInt();
+  ValeurXMin = constrain (ValeurXMin,1,DISTANCE_MAX);
+  ValeurXMin = inverse (ValeurXMin);
+  
+  ValeurXMax = (LectureValeurNum("X Max (cm)/"+axe+" :"+String(ValeurXMax))).toInt();
+  ValeurXMax = constrain (ValeurXMax,1,DISTANCE_MAX);
+  ValeurXMax = inverse (ValeurXMax);
+  
+  DistanceProfil = ValeurXMax - ValeurXMin;
+    
+  nbValeur = (LectureValeurNum("NB MESURES/"+axe+" :"+String(nbValeur))).toInt();
+  nbValeur = constrain (nbValeur,1,NB_MESURES_MAX);
+  delta = double(DistanceProfil) / double(nbValeur);
 
-  nbMesAff = (LectureValeurNum("NB MESURES/"+axe+" :"+String(nbMesAff))).toInt();
-  nbMesAff = constrain (nbMesAff,1,nbMesMax);
-
-  deltaAff = double(dstMaxAff) / double(nbMesAff);
-
-  String stringVal = String(deltaAff,PRECISION);
+  String stringVal = String(delta,PRECISION);
     
   return stringVal;
 }
 /***************************************/
 /* FIN BLOC : FONCTION CALCUL DE DELTA */
 /***************************************/
+
+/* --------------------------------------------------------------------------------- */
+
+/***********************************/
+/* BLOC : FONCTION INVERSE A = -A  */
+/***********************************/
+/*
+ * Inverse la valeur donnée en paramètre
+ */
+long inverse(long valeur)
+{
+ String touche;
+ bool validation = false;
+ timerBack = millis();
+ lcd.clear();
+ lcd.print("1 -> inverser");
+ lcd.setCursor (0,1);
+ lcd.print(valeur); 
+ 
+  // On demande la saisie tant que le bouton Ok n'a pas été appuyé
+  while (validation != true) 
+    {
+       
+      // Mise en place d'un timer pour éviter les répétitions des touches
+      timerNow = millis();
+      //Serial.println(timerNow);
+      
+      if ((timerNow - timerBack) >= keyboardTimer)
+        {
+          touche = lectureClavierNum();
+          timerBack = millis();
+                  
+          if (touche.equals("ok")) // La saisie est validée
+          {
+            validation = true;
+                      
+            return valeur;
+          }
+  
+          else if (touche.equals("1")) // On souhaite inverser le signe
+          {
+            valeur = -valeur;
+          }
+          lcd.clear();
+          lcd.print("1 -> inverser");
+          lcd.setCursor (0,1);
+          lcd.print(valeur); 
+       } 
+   }
+}
+
+/***********************************/
+/* BLOC : FONCTION INVERSE A = -A  */
+/***********************************/
 
 /* --------------------------------------------------------------------------------- */
 
@@ -1178,7 +1235,7 @@ String mesuresSchlumberger(int numeroMesure)
   long positionnementY;                 // Variables utilisées pour le positionnement manuel
   
   distanceOA = (LectureValeurNum("Distance OA(cm):")).toInt();
-  distanceOA = constrain (distanceOA,1,DISTANCE_OA_MAX);
+  distanceOA = constrain (distanceOA,1,DISTANCE_MAX);
 
    /* 
    * Positionnement à prendre en compte ? 
@@ -1231,7 +1288,7 @@ String mesuresWenner(int numeroMesure)
   int positionnementY;                 // Variables utilisées pour le positionnement manuel
   
   distanceA = (LectureValeurNum("Distance A(cm):")).toInt();
-  distanceA = constrain (distanceA,1,DISTANCE_A_MAX);
+  distanceA = constrain (distanceA,1,DISTANCE_MAX);
   
    /* 
    * Positionnement à prendre en compte ? 
@@ -1553,7 +1610,7 @@ void lancementMesures()
 
         // ACQUISITION DES DONNEES
         distanceOM = (LectureValeurNum("Distance OM(cm) :"+String(distanceOM))).toInt(); 
-        distanceOM = constrain (distanceOM,1,DISTANCE_OM_MAX);
+        distanceOM = constrain (distanceOM,1,DISTANCE_MAX);
 
         while (true)
         {
@@ -1651,7 +1708,7 @@ void lancementMesures()
        *  NUMERO DE MESURE, RHOA,U1,I2,DELTA,(GPS)
        */
        flux =  "IDENTIFIANT DES MESURES : "+identifiant+"\n"+"SONDAGE SUIVANT PROFIL : MESURE DIPOLE-DIPOLE"+"\n"+"CONSTANTES DEFINIEES :\n"+
-                      "DISTANCE A ENTRE ELECTRODES(m):"+distanceElectrodesA+"\nVALEUR DE N : "+valeurN+"\n"+"LONGUEUR DU PROFIL (m) : "+DistanceXMaxProfil+
+                      "DISTANCE A ENTRE ELECTRODES(m):"+distanceElectrodesA+"\nVALEUR DE N : "+valeurN+"\n"+"LONGUEUR DU PROFIL (m) : "+DistanceXProfil+
                       "\nNOMBRE DE MESURES EFFECTUEES : "+nbMesuresXProfil+"\nVALEUR CALCULEE DE DELTA : "+DeltaXProfil;
        
        if (utilisationCoeffI == true)
