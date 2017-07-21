@@ -90,6 +90,7 @@ Version : 0.28 (2017/07/19) -> Nouvelle unité de mesure adpotée : cm au lieu d
 Version : 0.29 (2017/07/19) -> refactoring de codes et optmisation mémoire / flux de sortie
 Version : 0.30 (2017/07/20) -> Ajout de la fonction inversion / Profil et Carte
 Version : 0.31 (2017/07/20) -> Réinitiatilisation des valeurs par défaut dans le fichier de configuration
+Version : 0.31 (2017/07/21) -> Ajout de la fonction de sauvegarde en EEPROM
                                   
   A faire : Modifier le comportement en cas de non saisie -> retourner la valeur par défaut ajouter argument par défaut dans les fonctions valeurNum et valeurFloat
             Acquisition des données suivant profil
@@ -200,9 +201,9 @@ String lectureClavierNum();
 void pause();                                           // Fonction permettant d'effectuer une pause dans le programme (attente appui sur ENTER)
 void affichageMenuPrincipal();                          // Affichage du menu principal
 void affichageMenuConfiguration();                      // Affichage du sous-menu permettant de configurer l'instrument de mesures
-void initEEPROM();                                      // Réinitialisation des valeurs par défaut
 void initVar();                                         // Reinit des variables
-void enregistrementConfig();                            // Sauvegarde de la configuration dans l'EEPROM
+void chargementConfig();                                // Chargement de la configuration à partir de l'EEPROM
+void sauvegardeConfig();                                // Sauvegarde de la configuration dans l'EEPROM
 int affichageMenuMode();                                // Affichage des types de sondage (sondages spécifiques, selon profil ou carte)
 int affichageMenuConfSpec(int navBasse,int navHaute);   // Affichage des modes de mesures (Schlumberger, Wenner, Dipôle-Dipôle, ou magnetique)
 int affichageMenuMesureI();                             // Sous-menu permettant de fixer I ou de le mesurer via la resistance de Shunt
@@ -349,37 +350,37 @@ int seuilsAnalogClavier[12] = {35,75,115,155,195,235,275,315,355,395,435,475};
  */
 struct record
 {
-int mesureI;
-int positionnement;
-long keyboardTimer;
-
-bool utilisationCoeffI;
-double intensiteFixee;
-double facteurConversion;
-
-long distanceElectrodesA;
-int valeurN;
-
-int hauteurCapteur1;
-int hauteurCapteur2;
-int vitesseEchantillonnage;
-
-long XMinProfil;
-long XMaxProfil;
-long DistanceXProfil;
-int nbMesuresXProfil;
-double DeltaXProfil;
-
-long XMinCarte;
-long XMaxCarte;
-long YMinCarte;
-long YMaxCarte;
-long DistanceXCarte;
-long DistanceYCarte;
-double DeltaXCarte;
-double DeltaYCarte;
-int nbMesuresXCarte;
-int nbMesuresYCarte;
+  int mesureI;
+  int positionnement;
+  long keyboardTimer;
+  
+  bool utilisationCoeffI;
+  double intensiteFixee;
+  double facteurConversion;
+  
+  long distanceElectrodesA;
+  int valeurN;
+  
+  int hauteurCapteur1;
+  int hauteurCapteur2;
+  int vitesseEchantillonnage;
+  
+  long XMinProfil;
+  long XMaxProfil;
+  long DistanceXProfil;
+  int nbMesuresXProfil;
+  double DeltaXProfil;
+  
+  long XMinCarte;
+  long XMaxCarte;
+  long YMinCarte;
+  long YMaxCarte;
+  long DistanceXCarte;
+  long DistanceYCarte;
+  double DeltaXCarte;
+  double DeltaYCarte;
+  int nbMesuresXCarte;
+  int nbMesuresYCarte;
 };
 
 record aRec;
@@ -391,14 +392,7 @@ record aRec;
 /************************/
 void setup() 
 {
-  /*
-   * Initialisation de la structure aRec
-   */
-  
-  affectRecord();
 
-  
- 
    /*
    * CONFIGURATION ECRAN LCD
    */
@@ -429,7 +423,14 @@ void setup()
     lcd.print ("CARTE SD OK");
     delay (1000);
   }
-  verifFile("CONFIG");
+  /*
+   * Initialisation de la structure aRec
+   */
+  
+  affectRecord();
+  chargementConfig();
+  affectVar();
+
   
   /*
    * CONFIGURATION CAN ADS1115 
@@ -446,7 +447,6 @@ void setup()
    * Mode debug
    */
   Serial.begin(9600); 
-  Serial.print(aRec.distanceElectrodesA);
 }
 /**********************/
 /* FIN FONCTION SETUP */
@@ -797,7 +797,7 @@ void affichageMenuConfiguration()
      */
     if ((choix.equals("5"))&&(choixMenuConfiguration == 12))
     {
-      
+      sauvegardeConfig();
     }
     /*****************************************************/
     /* FIN BLOC : SAUVERGARDE CONFIGURATION SUR CARTE SD */
@@ -811,6 +811,8 @@ void affichageMenuConfiguration()
      */
     if ((choix.equals("5"))&&(choixMenuConfiguration == 13))
     {
+      chargementConfig();
+      affectVar();
       
     }
     /************************************************************/
@@ -825,17 +827,9 @@ void affichageMenuConfiguration()
      */
     if ((choix.equals("5"))&&(choixMenuConfiguration == 14))
     {
-       lcd.clear();
-       lcd.print("EFFACEMENT EN COURS...");
-       for (int i = 0 ; i < EEPROM.length() ; i++) 
-       {
-          EEPROM.write(i, 0);
-       }
-       lcd.setCursor(0,1);
-       lcd.print("EFFACEMENT OK !");
-
-
-       
+      initVar();
+      affectRecord();
+      sauvegardeConfig();
     }
 
     /**************************************/
@@ -1644,21 +1638,6 @@ void alimentationFluxSpecifique (String typeSondage)
 
 /* --------------------------------------------------------------------------------- */
 
-/***********************************/
-/* BLOC / SAUVEGARDE CONFIG EEPROM */
-/***********************************/
-void sauvegardeConfiguration()
-{
-  int eeAdress = 0;
- 
-}
-
-/***************************************/
-/* FIN BLOC / SAUVEGARDE CONFIG EEPROM */
-/***************************************/
-
-/* --------------------------------------------------------------------------------- */
-
 /*************************/
 /* BLOC / INIT VARIABLES */
 /*************************/
@@ -1702,6 +1681,44 @@ void initVar()
 
 /* --------------------------------------------------------------------------------- */
 
+/********************************/
+/* BLOC / AFFECTATION VARIABLES */
+/********************************/
+void affectVar()
+{
+  mesureI = aRec.mesureI;                       
+  positionnement = aRec.positionnement;
+  keyboardTimer = aRec.keyboardTimer;
+  utilisationCoeffI = aRec.utilisationCoeffI;
+  intensiteFixee = aRec.intensiteFixee;
+  facteurConversion = aRec.facteurConversion;
+  distanceElectrodesA = aRec.distanceElectrodesA;
+  valeurN = aRec.valeurN;
+  hauteurCapteur1 = aRec.hauteurCapteur1;
+  hauteurCapteur2 = aRec.hauteurCapteur2;
+  vitesseEchantillonnage = aRec.vitesseEchantillonnage;
+  XMinProfil = aRec.XMinProfil;
+  XMaxProfil = aRec.XMaxProfil;
+  DistanceXProfil = aRec.DistanceXProfil;
+  nbMesuresXProfil = aRec.nbMesuresXProfil;
+  DeltaXProfil = aRec.DeltaXProfil;
+  XMinCarte = aRec.XMinCarte;
+  XMaxCarte = aRec.XMaxCarte;
+  YMinCarte = aRec.YMinCarte;
+  YMaxCarte = aRec.YMaxCarte;
+  DistanceXCarte = aRec.DistanceXCarte;
+  DistanceYCarte = aRec.DistanceYCarte;
+  DeltaXCarte = aRec.DeltaXCarte;
+  DeltaYCarte = aRec.DeltaYCarte;
+  nbMesuresXCarte = aRec.nbMesuresXCarte;
+  nbMesuresYCarte = aRec.nbMesuresYCarte;
+}
+/*******************************/
+/* FIN BLOC / AFFECT VARIABLES */
+/*******************************/
+
+/* --------------------------------------------------------------------------------- */
+
 /*************************/
 /* BLOC / INIT STRUCTURE */
 /*************************/
@@ -1735,6 +1752,63 @@ void affectRecord()
   aRec.nbMesuresXCarte = nbMesuresXCarte;
   aRec.nbMesuresYCarte = nbMesuresYCarte; 
 }
+
+/* --------------------------------------------------------------------------------- */
+
+/******************************************/
+/* BLOC / CHARGEMENT CONFIGURATION EEPROM */
+/******************************************/
+void chargementConfig()
+{
+  int eeAddress = 0;
+
+  lcd.clear();
+  lcd.print("CHARGEMENT CFG..");
+
+  EEPROM.get(eeAddress, aRec);
+
+  lcd.setCursor(0,1);
+  lcd.print("CHARGEMENT OK !");
+  pause();
+}
+
+/**********************************************/
+/* FIN BLOC / CHARGEMENT CONFIGURATION EEPROM */
+/**********************************************/
+
+/* --------------------------------------------------------------------------------- */
+
+/*******************************************/
+/* BLOC / SAUVERGARDE CONFIGURATION EEPROM */
+/*******************************************/
+void sauvegardeConfig()
+{
+  int eeAddress = 0;
+  
+  lcd.clear();
+  lcd.print("EFFACEMENT EEPROM..");
+  for (int i = 0 ; i < EEPROM.length() ; i++) 
+  {
+    EEPROM.write(i, 0);
+  }
+  lcd.setCursor(0,1);
+  lcd.print("EFFACEMENT OK !");
+  delay(500);
+  lcd.clear();
+  lcd.print("SAUVEGARDE EN COURS");
+
+  affectRecord();
+  EEPROM.put(eeAddress, aRec);
+  lcd.setCursor(0,1);
+  lcd.print("SAUVEGARDE OK !");
+  pause();
+}
+
+/***********************************************/
+/* FIN BLOC / SAUVERGARDE CONFIGURATION EEPROM */
+/***********************************************/
+
+/* --------------------------------------------------------------------------------- */
 
 /*****************************/
 /* FIN BLOC / INIT STRUCTURE */
