@@ -99,7 +99,7 @@ Version : 0.35 (2017/07/26) -> Simplificiation du progamme / gestion des mesures
 Version : 0.36 (2017/07/26) -> Simplificiation du progamme 2 : fonction mesure()
                                   
   A faire : Modifier le comportement en cas de non saisie -> retourner la valeur par défaut ajouter argument par défaut dans les fonctions valeurNum et valeurFloat
-            Acquisition des données suivant carte / balayage -> aller-retour
+            Terminer Acquisition des données suivant carte / balayage -> aller-retour
             //Ajout d'un bip sonore métronome + Bip de fin de des mesures
             //Ajouter un menu pour régler la vitesse du métronome
             Intégration de l'ADS1220
@@ -1390,7 +1390,7 @@ String fluxPositionnement()
    long positionnementX = 0;                // Variables utilisées pour les informations de positionnement
    long positionnementY = 0;                
    
-   if ((positionnement == Aucun) && (mode == Profil))
+   if ((positionnement == Aucun) && ((mode == Profil) || (mode == Carte)))
    {
     positionnementX = CurseurX;
     positionnementY = CurseurY;
@@ -1405,8 +1405,6 @@ String fluxPositionnement()
 
   tampon = String(positionnementX)+","+String(positionnementY);
   return tampon;
-   
-  
 }
 
 
@@ -1979,16 +1977,101 @@ void lancementMesures()
         lcd.clear();
         lcd.print("Mesure:"+String(i)+"/"+String(nbMesuresXProfil));
         lcd.setCursor(0,1);
+        
         CurseurX = (i-1)*DeltaXProfil;
+        
         lcd.print("PosX(cm):"+String(CurseurX,0));
         pause();
+        
         String fluxDeDonnees = mesures(i);
         Serial.print(fluxDeDonnees);
         
         saveData(identifiant,fluxDeDonnees);//FONCTION DE SAUVEGARDE DES DONNEES
         if ((LectureValeurNum("Quitter ->1(OUI)")).toInt() == 1) break;
-        
       }
+      
+    }
+     /*******************************************************/
+    /* FIN BLOC : MESURES PROFIL / DISPOSITIF DIPOLE-DIPOLE */
+    /********************************************************/
+  }
+  /*********ù***************************/
+  /* FIN BLOC / MESURES SUIVANT PROFIL */
+  /*************************************/ 
+
+  /* -------------------------------------------------------------- */
+
+  /********************************/
+  /* BLOC / MESURES SUIVANT CARTE */
+  /********************************/
+  if (mode == Carte)  // Mesures Selon Carte
+  {
+    lcd.clear();
+    lcd.print("Mesures Carte");
+    pause();
+
+    if ((DeltaXCarte == 0) || (DeltaYCarte == 0))  // Alerte l'utilisateur si les calculs de delta n'ont pas pas été effetués
+    {
+      lcd.clear();
+      lcd.print("ATTENTION");
+      lcd.setCursor(0,1);
+      lcd.print("DELTAS NON DEF!");
+      pause();
+    } // FIN BLOC ALERTE / NbMesures = 0
+
+    /****************************************************/
+    /* BLOC : MESURES PROFIL / DISPOSITIF DIPOLE-DIPOLE */
+    /****************************************************/
+    if (confSpecifique == Dipole)  // Configuration du dispositif suivant dipôle-dipôle
+    {
+      
+      alimentationFlux (Dipole);
+      int i=0;
+
+      for (int j=1 ; j<=nbMesuresYCarte ; j++)
+      {
+        
+        if ( (j%2) == 1) // Sens aller
+        {
+          for (int k=1 ; k<=nbMesuresXCarte ; k++)
+          {
+            lcd.clear();
+            lcd.print("Cd:"+String(k)+"/"+String(nbMesuresXCarte)+"-"+String(j)+"/"+String(nbMesuresYCarte));
+            pause();
+          }
+        }
+        else            // Sens retour
+        {
+          for (int k=nbMesuresXCarte; k>=1 ; k--)
+          {
+            lcd.clear();
+            lcd.print("Coord:"+String(k)+"/"+String(nbMesuresXCarte)+"-"+String(j)+"/"+String(nbMesuresYCarte));
+            pause();
+          }
+        }
+        /*
+        for (int k=1 ; k<=nbMesuresXCarte ; k++)
+        {
+          
+          lcd.print("Coord:"+String(j)+"/"+String(nbMesuresXCarte));
+          lcd.setCursor(0,1);
+          
+          CurseurX = (i-1)*DeltaXProfil;
+          
+          lcd.print("PosX(cm):"+String(CurseurX,0));
+          pause();
+          
+          String fluxDeDonnees = mesures(i);
+          Serial.print(fluxDeDonnees);
+          
+          saveData(identifiant,fluxDeDonnees);//FONCTION DE SAUVEGARDE DES DONNEES
+          if ((LectureValeurNum("Quitter ->1(OUI)")).toInt() == 1) break;
+          i++;
+        }
+        */
+      }
+      
+      
       
     }
      /*******************************************************/
