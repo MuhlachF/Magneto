@@ -895,8 +895,8 @@ String calculDelta (long &ValeurXMin, long &ValeurXMax, long &DistanceProfil, in
   DistanceProfil = ValeurXMax - ValeurXMin;
     
   nbValeur = (LectureValeurNum("NB MESURES/"+axe+" :"+String(nbValeur))).toInt();
-  nbValeur = constrain (nbValeur,1,NB_MESURES_MAX);
-  delta = double(DistanceProfil) / double(nbValeur);
+  nbValeur = constrain (nbValeur,2,NB_MESURES_MAX);
+  delta = double(DistanceProfil) / double(nbValeur-1);
 
   String stringVal = String(delta,PRECISION);
     
@@ -2030,36 +2030,24 @@ void lancementMesures()
     /****************************************************/
     if (confSpecifique == 2)  // Configuration du dispositif suivant dipôle-dipôle
     {
-      /* 
-       *  FORMAT DES DONNEES :
-       *  IDENTIFIANT DE FICHIER : ID
-       *  
-       *  SONDAGE SUIVANT PROFIL : MESURE DIPOLE-DIPOLE
-       *  
-       *  CONSTANTES DEFINIES :
-       *  distance A entre Electrodes : 
-       *  valeur de N : 
-       *  
-       *  NUMERO DE MESURE, RHOA,U1,I2,DELTA,(GPS)
-       */
-       flux =  "IDENTIFIANT DES MESURES : "+identifiant+"\n"+"SONDAGE SUIVANT PROFIL : MESURE DIPOLE-DIPOLE"+"\n"+"CONSTANTES DEFINIEES :\n"+
-                      "DISTANCE A ENTRE ELECTRODES(m):"+distanceElectrodesA+"\nVALEUR DE N : "+valeurN+"\n"+"LONGUEUR DU PROFIL (m) : "+DistanceXProfil+
-                      "\nNOMBRE DE MESURES EFFECTUEES : "+nbMesuresXProfil+"\nVALEUR CALCULEE DE DELTA : "+DeltaXProfil;
-       
-       if (utilisationCoeffI == true)
-       {
-          flux = flux+"\nINTENSITE I2 FIXEE :"+intensiteFixee;
-       }
-       else
-       {
-          flux = flux+"\nINTENSITE I2 CALCULEE, FACTEUR DE CONVERSION :"+facteurConversion;
-       }
+      
+      alimentationFlux (Dipole);
 
-       flux = flux+"\n\n"+"ID MESURE, RHOA(Ohms/m), TENSION U1(mV), TENSION U2(mv), COUTANT I2(mA), DELTA X(m)"+"\n";
-
-       //AJOUTER L'OPTION GPS  
-       saveData(identifiant,flux);
-       
+      for (int i=1 ; i<=nbMesuresXProfil ; i++)
+      {
+        lcd.clear();
+        lcd.print("Mesure:"+String(i)+"/"+String(nbMesuresXProfil));
+        lcd.setCursor(0,1);
+        double PositionX = (i-1)*DeltaXProfil;
+        lcd.print("PosX(cm):"+String(PositionX,0));
+        pause();
+        String fluxDeDonnees = mesuresDipDip(i);
+        
+        saveData(identifiant,fluxDeDonnees);//FONCTION DE SAUVEGARDE DES DONNEES
+        if ((LectureValeurNum("Quitter ->1(OUI)")).toInt() == 1) break;
+        
+      }
+      
     }
      /*******************************************************/
     /* FIN BLOC : MESURES PROFIL / DISPOSITIF DIPOLE-DIPOLE */
