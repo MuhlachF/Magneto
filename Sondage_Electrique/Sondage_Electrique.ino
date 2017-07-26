@@ -96,6 +96,7 @@ Version : 0.32 (2017/07/21) -> Intégration du module RTC
 Version : 0.33 (2017/07/26) -> Ajout de la fonctionnalité mesure suivant profil
 Version : 0.34 (2017/07/26) -> Lisibilité du programme -> Ajout des énumérations
 Version : 0.35 (2017/07/26) -> Simplificiation du progamme / gestion des mesures
+Version : 0.36 (2017/07/26) -> Simplificiation du progamme 2 : fonction mesure()
                                   
   A faire : Modifier le comportement en cas de non saisie -> retourner la valeur par défaut ajouter argument par défaut dans les fonctions valeurNum et valeurFloat
             Acquisition des données suivant carte / balayage -> aller-retour
@@ -215,9 +216,7 @@ int modifFrequence();                                   // Frequence du CAN pour
 int modifNombreMesures();                               // Nombre de meusres spécifiques
 String navigationMenu();                                // Fonction permettant de naviguer dans les menus
 void lancementMesures();                                // Lancement des mesures (START est sélectionné)
-String mesuresSchlumberger(int numeroMesure);           // Lancement des mesures selon le modèle Schlumberger
-String mesuresWenner(int numeroMesure);                 // Lancement des mesures selon le modèle Wenner
-String mesuresDipDip(int numeroMesure);                 // Lancement des mesures selon le modèle Dipole-Dipole
+String mesures(int numeroMesure);                       // Fonction dédiée aux mesures (Schlumberger, Wenner, Dipole...)
 void alimentationFlux(enum eTypeSondage sondage);        // Enregistrement de l'entête sur sur carte µSD
 void lancementAcquisition();                            // Acquisition et conversion 16 bits
 
@@ -1324,101 +1323,46 @@ String lectureClavierNum()
 
 /* --------------------------------------------------------------------------------- */
 
-/********************************************/
-/* BLOC : FONCTION ACQUISITION SCHLUMBERGER */
-/********************************************/
-String mesuresSchlumberger(int numeroMesure)
+/*******************************************/
+/* BLOC : FONCTION ACQUISITION DES MESURES */
+/*******************************************/
+String mesures(int numeroMesure)
 {
-  // Déclaration des varianles locales
-  String tampon;                      // Collecte les informations à sauvegarder
-  String tamponPosition;
-  double rhoa;                        // Variable dédié au calcul de Rhoa
-  String rhoaStr;                     // Conversion de la Rhoa en chaîne de caractères
-  
-  distanceOA = (LectureValeurNum("Distance OA(cm):")).toInt();
-  distanceOA = constrain (distanceOA,1,DISTANCE_MAX);
-
-  tamponPosition = fluxPositionnement(); // Récupération du flux de données pour le positionnement
-  
-   
-  lancementAcquisition();
-
-  // Calcul de la résisitivité apparente 
-  rhoa = PI * (double(distanceOA)/100*double(distanceOA)/100 - double(distanceOM)/100*double(distanceOM)/100) / (2 * double(distanceOM)/100) * (tensionCanBus1 / intensiteDeduiteCanBus2);
-
-  // Conversion des données en chaine de caractères
-  rhoaStr = String(rhoa,2);
-
-  // Affichage des calculs sur l'écran LCD
-  affichageCalculs (tensionCanBus1Str,intensiteDeduiteCanBus2Str,rhoaStr);
-
-  // Alimentation du tampon avec les données collectées
-  tampon = String(numeroMesure)+","+distanceOA+","+distanceOM+","+rhoaStr+","+tensionCanBus1Str+","+tensionCanBus2Str+","+intensiteDeduiteCanBus2Str+","+tamponPosition+"\n";
-
-  return tampon; 
-}
-/************************************************/
-/* FIN BLOC : FONCTION ACQUISITION SCHLUMBERGER */
-/************************************************/
-
-/* --------------------------------------------------------------------------------- */
-
-/**************************************/
-/* BLOC : FONCTION ACQUISITION WENNER */
-/**************************************/
-String mesuresWenner(int numeroMesure)
-{
-  String tampon;                      // Collecte les informations à sauvegardes
-  String tamponPosition;
-  double rhoa;                        // Variable dédié au calcul de Rhoa
-  String rhoaStr;                     // Conversion de Rhoa en chaîne de caractères
-  
-  distanceA = (LectureValeurNum("Distance A(cm):")).toInt();
-  distanceA = constrain (distanceA,1,DISTANCE_MAX);
-
-  tamponPosition = fluxPositionnement(); // Récupération du flux de données pour le positionnement
-
-  lancementAcquisition();
-  
- // Calcul de la résisitivité apparente 
-  rhoa = 2 * PI * float(distanceA)/100 * (tensionCanBus1 / intensiteDeduiteCanBus2);
-    
-  // Conversion des données en chaine de caractères
-  rhoaStr = String(rhoa,PRECISION);
-
-  // Affichage des calculs sur l'écran LCD
-  affichageCalculs (tensionCanBus1Str,intensiteDeduiteCanBus2Str,rhoaStr);
-
-  // Alimentation du tampon avec les données collectées
-  tampon = String(numeroMesure)+","+distanceA+","+rhoaStr+","+tensionCanBus1Str+","+tensionCanBus2Str+","+intensiteDeduiteCanBus2Str+","+tamponPosition+"\n";
-  
-  return tampon;
-
-}
-/******************************************/
-/* FIN BLOC : FONCTION ACQUISITION WENNER */
-/******************************************/
-
-/* --------------------------------------------------------------------------------- */
-
-/*********************************************/
-/* BLOC : FONCTION ACQUISITION DIPOLE-DIPOLE */
-/*********************************************/
-String mesuresDipDip(int numeroMesure)
-{
-  String tampon;                      // Collecte les informations à sauvegarder
+  String tampon;                       // Collecte les informations à sauvegarder
   String tamponPosition;               // Collecte les informations pour les positions
-  double rhoa;                        // Variable dédié au calcul de Rhoa
-  String rhoaStr;                     // Conversion de Rhoa en chaîne de caractères
+  String tamponDistance;               // Informations complémentaires à sauvegarder
+  double rhoa;                         // Variable dédié au calcul de Rhoa
+  String rhoaStr;                      // Conversion de Rhoa en chaîne de caractères
    
   tamponPosition = fluxPositionnement(); // Récupération du flux de données pour le positionnement
-  
-  lancementAcquisition();
-  
-  
+
   // Calcul de la résisitivité apparente 
-  rhoa = PI * double(distanceElectrodesA)/100 * valeurN * (valeurN + 1)*(valeurN + 2) * (tensionCanBus1 / intensiteDeduiteCanBus2);
+  if (confSpecifique == Schlumberger)
+  {
+    distanceOA = (LectureValeurNum("Distance OA(cm):")).toInt();
+    distanceOA = constrain (distanceOA,1,DISTANCE_MAX);
     
+    lancementAcquisition();
+    
+    rhoa = PI * (double(distanceOA)/100*double(distanceOA)/100 - double(distanceOM)/100*double(distanceOM)/100) / (2 * double(distanceOM)/100) * (tensionCanBus1 / intensiteDeduiteCanBus2);
+    tamponDistance = String (distanceOA)+","+String(distanceOM);
+  }
+  else if (confSpecifique == Wenner)
+  {
+    distanceA = (LectureValeurNum("Distance A(cm):")).toInt();
+    distanceA = constrain (distanceA,1,DISTANCE_MAX);
+    lancementAcquisition();  
+    rhoa = 2 * PI * float(distanceA)/100 * (tensionCanBus1 / intensiteDeduiteCanBus2);
+    tamponDistance = String(distanceA);
+  }
+  
+  else if (confSpecifique == Dipole)
+  {
+    rhoa = PI * double(distanceElectrodesA)/100 * valeurN * (valeurN + 1)*(valeurN + 2) * (tensionCanBus1 / intensiteDeduiteCanBus2);  
+    tamponDistance = "";
+    lancementAcquisition();  
+  }
+     
   // Conversion des données en chaine de caractères
   rhoaStr = String(rhoa,PRECISION);
 
@@ -1426,10 +1370,16 @@ String mesuresDipDip(int numeroMesure)
   affichageCalculs (tensionCanBus1Str,intensiteDeduiteCanBus2Str,rhoaStr);
 
   // Alimentation du tampon avec les données collectées
-  tampon = String(numeroMesure)+","+rhoaStr+","+tensionCanBus1Str+","+tensionCanBus2Str+","+intensiteDeduiteCanBus2Str+","+tamponPosition+"\n";
+  tampon = String(numeroMesure)+","+tamponDistance+","+rhoaStr+","+tensionCanBus1Str+","+tensionCanBus2Str+","+intensiteDeduiteCanBus2Str+","+tamponPosition+"\n";
  
   return tampon;
 }
+
+/***********************************************/
+/* FIN BLOC : FONCTION ACQUISITION DES MESURES */
+/***********************************************/
+
+/* --------------------------------------------------------------------------------- */
 
 /***************************************/
 /* BLOC : FONCTION FLUX POSITIONNEMENT */
@@ -1936,7 +1886,7 @@ void lancementMesures()
 
         while (true)
         {
-          String fluxDeDonnees = mesuresSchlumberger(i);
+          String fluxDeDonnees = mesures(i);
           Serial.print(fluxDeDonnees);
           saveData(identifiant,fluxDeDonnees);//FONCTION DE SAUVEGARDE DES DONNEES
           if ((LectureValeurNum("Quitter ->1(OUI)")).toInt() == 1) break; 
@@ -1959,7 +1909,7 @@ void lancementMesures()
 
          while (true)
          {
-           String fluxDeDonnees = mesuresWenner(i);
+           String fluxDeDonnees = mesures(i);
            Serial.print(fluxDeDonnees);
            saveData(identifiant,fluxDeDonnees);//FONCTION DE SAUVEGARDE DES DONNEES
            if ((LectureValeurNum("Quitter ->1(OUI)")).toInt() == 1) break; 
@@ -1980,7 +1930,7 @@ void lancementMesures()
 
         while (true)
         {
-          String fluxDeDonnees = mesuresDipDip(i);
+          String fluxDeDonnees = mesures(i);
           Serial.print(fluxDeDonnees);
           saveData(identifiant,fluxDeDonnees);//FONCTION DE SAUVEGARDE DES DONNEES
           if ((LectureValeurNum("Quitter ->1(OUI)")).toInt() == 1) break; 
@@ -2032,7 +1982,7 @@ void lancementMesures()
         CurseurX = (i-1)*DeltaXProfil;
         lcd.print("PosX(cm):"+String(CurseurX,0));
         pause();
-        String fluxDeDonnees = mesuresDipDip(i);
+        String fluxDeDonnees = mesures(i);
         Serial.print(fluxDeDonnees);
         
         saveData(identifiant,fluxDeDonnees);//FONCTION DE SAUVEGARDE DES DONNEES
