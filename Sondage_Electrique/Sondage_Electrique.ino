@@ -93,6 +93,7 @@ Version : 0.30 (2017/07/20) -> Ajout de la fonction inversion / Profil et Carte
 Version : 0.31 (2017/07/20) -> Réinitiatilisation des valeurs par défaut dans le fichier de configuration
 Version : 0.31 (2017/07/21) -> Ajout de la fonction de sauvegarde en EEPROM
 Version : 0.32 (2017/07/21) -> Intégration du module RTC
+Version : 0.33 (2017/07/26) -> Ajout de la fonctionnalité mesure suivant profil
                                   
   A faire : Modifier le comportement en cas de non saisie -> retourner la valeur par défaut ajouter argument par défaut dans les fonctions valeurNum et valeurFloat
             Acquisition des données suivant profil
@@ -114,7 +115,7 @@ Version : 0.32 (2017/07/21) -> Intégration du module RTC
  * 
  */
 #define VERSION_MAJEURE 0
-#define VERSION_MINEURE 32
+#define VERSION_MINEURE 33
 /*
   DESCRIPTION DES CONNEXIONS
   
@@ -183,6 +184,10 @@ String flux;                              // Tampon pour le flux de sauvegarde s
 File monFichier;                          // l'objet monFichier sera utilisé pour l'enregistrement sur carte SD
 DS1307 clock;                             // Définition de l'objet clock pour le module RTC
 
+/* 
+ * TYPE DE SONDAGE 
+ */
+enum typeSondage {Schlumberger,Wenner,Dipole,Magnetique};
 
 /*
  * DECLARATION DES FONCTIONS : HEADER
@@ -194,6 +199,8 @@ String printTime(bool affichage);                       // Affiche la date et l'
 void pause();                                           // Fonction permettant d'effectuer une pause dans le programme (attente appui sur ENTER)
 void affichageMenuPrincipal();                          // Affichage du menu principal
 void affichageMenuConfiguration();                      // Affichage du sous-menu permettant de configurer l'instrument de mesures
+void affectRecord();
+void affectVar();
 void initVar();                                         // Reinit des variables
 void chargementConfig();                                // Chargement de la configuration à partir de l'EEPROM
 void sauvegardeConfig();                                // Sauvegarde de la configuration dans l'EEPROM
@@ -208,7 +215,7 @@ void lancementMesures();                                // Lancement des mesures
 String mesuresSchlumberger(int numeroMesure);           // Lancement des mesures selon le modèle Schlumberger
 String mesuresWenner(int numeroMesure);                 // Lancement des mesures selon le modèle Wenner
 String mesuresDipDip(int numeroMesure);                 // Lancement des mesures selon le modèle Dipole-Dipole
-void alimentationFluxSpecifique (String typeSondage);   // Enregistrement de l'entête sur sur carte µSD
+void alimentationFlux(enum typeSondage sondage);        // Enregistrement de l'entête sur sur carte µSD
 void lancementAcquisition();                            // Acquisition et conversion 16 bits
 
 String calculDelta (long &ValeurXMin, long &ValeurXmax, long &DistanceProfil, int &nbValeur, double &delta, String axe); // Fonction qui permet de calculer les valeurs Delta
@@ -229,6 +236,7 @@ const String menuConfiguration[]=                         {"0-Identifiant","1-Mo
  * DECLARATION DES VARIABLES
  */
 int choixMenuPrincipal = 0;       // variable qui permet de naviguer dans le menu principal
+
 
 /*
  * TABLEAUX DE MENU
@@ -447,7 +455,7 @@ void loop()
 {
   // Demande du choix de l'utilisateur
   // LectureValeurNum("Parameter : ").
-  //calibrationClavier(); // a lancer pour récupérer les seuils analogiques du clavier / Console serial
+  //calibrationClavier(); // a lancer pour récupérer les seuils analogiques du clavier / Affichage LCD
   lcd.setRGB(valeurRetro,valeurRetro,valeurRetro);
   affichageMenuPrincipal();
 }
@@ -709,8 +717,8 @@ void affichageMenuConfiguration()
      */
     if ((choix.equals("5"))&&(choixMenuConfiguration == 7)) 
     {
-      //calculDelta (DistanceXMaxCarte,nbMesuresXCarte,DeltaXCarte,DISTANCE_MAX,NB_MESURES_X_MAX,"X");
-      //calculDelta (DistanceYMaxCarte,nbMesuresYCarte,DeltaYCarte,DISTANCE_MAX,NB_MESURES_Y_MAX,"Y");
+      calculDelta (XMinCarte,XMaxCarte,DistanceXCarte,nbMesuresXCarte,DeltaXCarte,"X");
+      calculDelta (YMinCarte,YMaxCarte,DistanceYCarte,nbMesuresYCarte,DeltaYCarte,"Y");
     }
     /**********************************/
     /* FIN BLOC : CONFIGURATION CARTE */
@@ -876,12 +884,12 @@ void affichageMenuConfiguration()
 String calculDelta (long &ValeurXMin, long &ValeurXMax, long &DistanceProfil, int &nbValeur, double &delta, String axe)
 {
   
-  ValeurXMin = (LectureValeurNum("X Min (cm)/"+axe+" :"+String(ValeurXMin))).toInt();
-  ValeurXMin = constrain (ValeurXMin,1,DISTANCE_MAX);
+  ValeurXMin = (LectureValeurNum(axe+"Min(cm):"+String(ValeurXMin))).toInt();
+  ValeurXMin = constrain (ValeurXMin,0,DISTANCE_MAX);
   ValeurXMin = inverse (ValeurXMin);
   
-  ValeurXMax = (LectureValeurNum("X Max (cm)/"+axe+" :"+String(ValeurXMax))).toInt();
-  ValeurXMax = constrain (ValeurXMax,1,DISTANCE_MAX);
+  ValeurXMax = (LectureValeurNum(axe+"Max(cm):"+String(ValeurXMax))).toInt();
+  ValeurXMax = constrain (ValeurXMax,0,DISTANCE_MAX);
   ValeurXMax = inverse (ValeurXMax);
   
   DistanceProfil = ValeurXMax - ValeurXMin;
@@ -1620,6 +1628,9 @@ bool saveData (String identFichier,String Data)
 /*******************************/
 /* 
          *  FORMAT : 
+         *  -----------------------------------
+         *  
+         *  JJ/MM/YY HH-MM
          *  IDENTIFIANT DE FICHIER : ID
          *  
          *  SONDAGE ELECTRIQUE SPECIFIQUE : TYPE DE MESURE
@@ -1631,11 +1642,35 @@ bool saveData (String identFichier,String Data)
          *  
          *  ID de mesure,RHOA,U1,I2,DELTA,(GPS)
          */
-void alimentationFluxSpecifique (String typeSondage)
+void alimentationFlux (enum typeSondage sondage)
 {
+  String TypedeSondage = "";
+  String constantesComplementaires="";
+  String EtiquetteVariablesSondage="";
+  
+  if (sondage == Schlumberger)
+  {
+    TypedeSondage = "SCHLUMBERGER";
+    EtiquetteVariablesSondage = "DISTANCE AB(cm), DISTANCE MN(cm)";
+  }
+  else if (sondage == Wenner)
+  {
+    TypedeSondage = "WENNER";
+    EtiquetteVariablesSondage = "DISTANCE A(cm)";
+  }
+  else if (sondage == Dipole)
+  {
+    TypedeSondage = "DIPOLE-DIP";
+    constantesComplementaires = "DISTANCE ENTRE ELECTRODES A(cm) :"+String(distanceElectrodesA)+"\nVALEUR DE N :"+String(valeurN)+"\n";
+  }
+  else if (sondage == Magnetique)
+  {
+    TypedeSondage = "MAGNETIQUE";
+  }
+  
   flux = "-----------------------------\n\n";
   flux = flux + printTime(0);
-  flux =  flux + "\nIDENTIFIANT DES MESURES : "+identifiant+"\n"+"MESURE :"+typeSondage+"\n"+"\nCONSTANTES DEFINIEES :";  
+  flux =  flux + "\nIDENTIFIANT DES MESURES : "+identifiant+"\n"+"MESURE :"+TypedeSondage+"\n"+"\nCONSTANTES DEFINIEES :";  
                         
   if (utilisationCoeffI == true)
   {
@@ -1645,17 +1680,21 @@ void alimentationFluxSpecifique (String typeSondage)
   {
      flux = flux+"\nINTENSITE I2 CALCULEE, FACTEUR DE CONVERSION :"+facteurConversion;
   }
-  flux = flux+"\n\n"+"ID MESURE, DISTANCE AB(cm), DISTANCE MN(cm), RHOA(Ohms/m), TENSION U1(mV), TENSION U2 (mV), COUTANT I2(mA), POSITION (X,Y) OU GPS\n";
+  flux = flux+"\n"+constantesComplementaires;
+  
+  flux = flux+"\n\n"+"ID MESURE, "+EtiquetteVariablesSondage+", RHOA(Ohms/m), TENSION U1(mV), TENSION U2 (mV), COUTANT I2(mA), POSITION (X,Y) OU GPS\n";
          
   Serial.print(flux);
   // AJOUTER L'OPTION GPS
   saveData(identifiant,flux);
   
    lcd.setCursor(0,1);
-   lcd.print(typeSondage);
+   lcd.print(TypedeSondage);
    
    pause();
 }
+
+
 
 /***********************************/
 /* FIN BLOC / ALIMENTATION DU FLUX */
@@ -1902,7 +1941,7 @@ void lancementMesures()
       {
         int i=1;
             
-        alimentationFluxSpecifique ("SCHLUMBERGER"); // Création et enregistrement de l'entête sur support SD
+        alimentationFlux(Schlumberger); // Création et enregistrement de l'entête sur support SD
 
         // ACQUISITION DES DONNEES
         distanceOM = (LectureValeurNum("Distance OM(cm) :"+String(distanceOM))).toInt(); 
@@ -1928,7 +1967,7 @@ void lancementMesures()
     if (confSpecifique == 1)                     
       {
          int i=1;
-         alimentationFluxSpecifique ("WENNER"); // Création et enregistrement de l'entête sur support SD
+         alimentationFlux(Wenner); // Création et enregistrement de l'entête sur support SD
 
          while (true)
          {
@@ -1948,7 +1987,7 @@ void lancementMesures()
     if (confSpecifique == 2)                     
       {
          int i=1;
-         alimentationFluxSpecifique ("DIPOLE-DIP"); // Création et enregistrement de l'entête sur support SD
+         alimentationFlux(Dipole); // Création et enregistrement de l'entête sur support SD
 
         while (true)
         {
