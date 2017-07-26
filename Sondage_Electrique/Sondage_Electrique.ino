@@ -76,9 +76,10 @@
                                   9-Synchro GPS      // Renseigne sur l'état de synchronisation avec les GPS
                                   10-Freq Keyboard   // Vitesse du clavier
                                   11-LCD-retro       // Configuration des valeurs du retro-éclairage de l'écran LCD
-                                  12-Save config     // Permet de sauvegardes la configuration courante
-                                  13-Load config     // Lecture du fichier de configuration sur la carte
-                                  14-Reset config    // Réinitialise les données et le fichier de configuration
+                                  12-Reglage Heure   // Réglage de l'heure
+                                  13-Save config     // Permet de sauvegardes la configuration courante
+                                  14-Load config     // Lecture du fichier de configuration sur la carte
+                                  15-Reset config    // Réinitialise les données et le fichier de configuration
                                   
                               2) Start               // Lancement du processus d'acquisition en fonction de la configuration sélectionnée
                               
@@ -91,13 +92,12 @@ Version : 0.29 (2017/07/19) -> refactoring de codes et optmisation mémoire / fl
 Version : 0.30 (2017/07/20) -> Ajout de la fonction inversion / Profil et Carte
 Version : 0.31 (2017/07/20) -> Réinitiatilisation des valeurs par défaut dans le fichier de configuration
 Version : 0.31 (2017/07/21) -> Ajout de la fonction de sauvegarde en EEPROM
+Version : 0.32 (2017/07/21) -> Intégration du module RTC
                                   
   A faire : Modifier le comportement en cas de non saisie -> retourner la valeur par défaut ajouter argument par défaut dans les fonctions valeurNum et valeurFloat
             Acquisition des données suivant profil
             Acquisition des données suivant carte / balayage -> aller-retour
             Intégration de l'heure à partir du module RTC + menu de paramétrage de l'heure
-            Sauvegarde et lecture du fichier de configuration en EEPROM
-            Ajout de la fonction de reinitilisation des valeurs (valeurs par défaut)
             //Ajout d'un bip sonore métronome + Bip de fin de des mesures
             //Ajouter un menu pour régler la vitesse du métronome
             Intégration de l'ADS1220
@@ -114,7 +114,7 @@ Version : 0.31 (2017/07/21) -> Ajout de la fonction de sauvegarde en EEPROM
  * 
  */
 #define VERSION_MAJEURE 0
-#define VERSION_MINEURE 31
+#define VERSION_MINEURE 32
 /*
   DESCRIPTION DES CONNEXIONS
   
@@ -150,6 +150,7 @@ Version : 0.31 (2017/07/21) -> Ajout de la fonction de sauvegarde en EEPROM
 #include <SD.h>                 // Librairie de gestion de la carte SD
 #include <Adafruit_ADS1015.h>   // Gestion du CAN / ici le module ADS1115 est utilisé pour les conversions
 #include <EEPROM.h>             // Librairie relative à l'EEPROM de l'Arduino
+#include "DS1307.h"             // Gestion du module RTC
 //#include <Adafruit_GPS.h>
 //#include <SoftwareSerial.h>
 
@@ -176,28 +177,20 @@ Version : 0.31 (2017/07/21) -> Ajout de la fonction de sauvegarde en EEPROM
  */
 #define PRECISION 4                       // précision de 4 décimales sur l'écran LCD
 
-/*
- * GESTION DE L'AFFICHAGE
- */
-rgb_lcd lcd;                              // Objet lcd couleur est déclaré
+rgb_lcd lcd;                              // Objet lcd couleur déclaré
 int valeurRetro = 0;                      // Valeur du rétroéclairage
-
-/*
- * FLUX DE SORTIE
- */
-String flux;
-
-/*
- * DESCRIPTEUR DE FICHIER
- */
+String flux;                              // Tampon pour le flux de sauvegarde sur carte SD
 File monFichier;                          // l'objet monFichier sera utilisé pour l'enregistrement sur carte SD
+DS1307 clock;                             // Définition de l'objet clock pour le module RTC
+
 
 /*
- * DECLARATION DES FONCTIONS
+ * DECLARATION DES FONCTIONS : HEADER
  */
 String LectureValeurNum(String affichage);              // Fonction permettant la lecture d'un nombre entier saisi au clavier
 String LectureValeurFloat(String affichage);            // Fonction permettant la lecture d'un nombre décimal saisi au clavier
 String lectureClavierNum();
+String printTime(bool affichage);                       // Affiche la date et l'heure sur l'écran LCD et retourne un Timestamp
 void pause();                                           // Fonction permettant d'effectuer une pause dans le programme (attente appui sur ENTER)
 void affichageMenuPrincipal();                          // Affichage du menu principal
 void affichageMenuConfiguration();                      // Affichage du sous-menu permettant de configurer l'instrument de mesures
@@ -230,7 +223,7 @@ const String menuConfiguration[]=                         {"0-Identifiant","1-Mo
                                                           "3-Freq-Walking","4-Conf Dip-Dip","5-Dist capteurs",
                                                           "6-Conf profil","7-Conf carte","8-Positionnement",
                                                           "9-Synchro GPS","10-Freq Keyboard","11-LCD retro",
-                                                          "12-Save config","13-Load config","14-Reset config"};
+                                                          "12-Reglage Heure,","13-Save config","14-Load config","15-Reset config"};
                                                           
 /*
  * DECLARATION DES VARIABLES
@@ -293,51 +286,51 @@ long distanceA = 0;
 /*
  * CONFIGURATION GLOBALES
  */
-int mesureI = 0;                        // 0->I mesuree, 1-> I determinee
-int positionnement = 0 ;                // 0->Aucun, 1->Positionnement manuel, 2->GPS;
-long keyboardTimer = 200;               // frequence du clavier par défaut;
+int mesureI = 0;                      // 0->I mesuree, 1-> I determinee
+int positionnement = 0 ;              // 0->Aucun, 1->Positionnement manuel, 2->GPS;
+long keyboardTimer = 200;             // frequence du clavier par défaut;
 
 /* 
  *  VARIABLES DE GESTION DES SONDAGES ELECTRIQUES
  */
-bool utilisationCoeffI = false;        // Si utilisationCoeff == false alors I est mesuré ;
-double intensiteFixee = 1.0;             // sinon intensiteFixee est utilisée dans les calculs;
-double facteurConversion = 1.0;          // Permet de calculer I2 à partir de U2 du Shunt;
+bool utilisationCoeffI = false;       // Si utilisationCoeff == false alors I est mesuré ;
+double intensiteFixee = 1.0;          // sinon intensiteFixee est utilisée dans les calculs;
+double facteurConversion = 1.0;       // Permet de calculer I2 à partir de U2 du Shunt;
 
 /*
  * VARIABLES DE CONFIGURATION DIPOLE-DIPOLE
  */
-long distanceElectrodesA = 10;         // Distance entre electrodes en cm;
-int valeurN = 1;
+long distanceElectrodesA = 10;        // Distance entre electrodes en cm;
+int valeurN = 1;                      // Valeur de N
 
  /*
  * VARIBLES DE CONFIGURATION SONDAGE MAGNETIQUE
  */
-int hauteurCapteur1 = 0;
-int hauteurCapteur2 = 0;
+int hauteurCapteur1 = 0;              // Hauteur du premier capteur magnetique
+int hauteurCapteur2 = 0;              // Hauteur du second capteur magnetique
 int vitesseEchantillonnage = 10;      // Utilisé en prise de mesures / profil et Carte 10Hz par défaut;
 
 /* 
  * VARIBALES DEDIEES AUX MESURES SUIVANT PROFIL 
  */
-long XMinProfil = 0;
-long XMaxProfil = 0;
-long DistanceXProfil = 0;
-int nbMesuresXProfil = 0;
-double DeltaXProfil = 0;
+long XMinProfil = 0;                  // Valeur Xmin pour l'acquisition suivant un profil
+long XMaxProfil = 0;                  // Valeur Xmax pour l'acquisition suivant un profil
+long DistanceXProfil = 0;             // Longueur du profil sur X
+int nbMesuresXProfil = 0;             // Nombre de mesures effectuées le long du profil
+double DeltaXProfil = 0;              // Delta entre chaque point sur X
 
  /* 
  *  VARIABLES POUR MESURES SUIVANT CARTE
  */
-long XMinCarte = 0;
+long XMinCarte = 0;                   // Valeurs Xmin et XMax pour l'acquisition suivant une carte
 long XMaxCarte = 0;
-long YMinCarte = 0;
+long YMinCarte = 0;                   // Valeurs Ymin et YMax pour l'acquisition suivant une carte
 long YMaxCarte = 0;
-long DistanceXCarte = 0;
-long DistanceYCarte = 0;
-double DeltaXCarte = 0;
+long DistanceXCarte = 0;              // Longueur de la carte sur X et Y
+long DistanceYCarte = 0;              
+double DeltaXCarte = 0;               // Delta entre chaque point sur X et Y
 double DeltaYCarte = 0;
-int nbMesuresXCarte = 0;
+int nbMesuresXCarte = 0;              // Nombre de mesures effectuées sur X et Y
 int nbMesuresYCarte = 0;
 
 /* 
@@ -392,28 +385,24 @@ record aRec;
 /************************/
 void setup() 
 {
-
-   /*
-   * CONFIGURATION ECRAN LCD
-   */
+  
+  clock.begin();      // Initiatialisation de l'horloge
+   
   pinMode(SS, OUTPUT);
 
-  lcd.begin(16, 2);
-  lcd.setRGB(valeurRetro,valeurRetro,valeurRetro);
+  lcd.begin(16, 2);   // Configuration de la zone d'affichage : 2 lignes de 16 caractères
+  lcd.setRGB(valeurRetro,valeurRetro,valeurRetro); 
   delay (500);
   
-  checkCard = SD.begin(CHIP_SELECT);
+  checkCard = SD.begin(CHIP_SELECT); 
   delay (500);
 
   lcd.print("SOND ELEC V"+String(VERSION_MAJEURE)+"."+String(VERSION_MINEURE));
   delay(1000);
   
-  /*
-   * CONFIGURATION CARTE SD
-   */
-    lcd.clear();
+  lcd.clear();
   
-  if (!checkCard)       // Vérifie l'état de la carte SD
+  if (!checkCard)     // Vérification de létat de la carte SD
   {
     lcd.print("PROBLEME CARTE SD");
     pause();
@@ -423,13 +412,10 @@ void setup()
     lcd.print ("CARTE SD OK");
     delay (1000);
   }
-  /*
-   * Initialisation de la structure aRec
-   */
   
-  affectRecord();
-  chargementConfig();
-  affectVar();
+  affectRecord();     // Initialisation de la structure de sauvegarde
+  chargementConfig(); // Chargement de la configuration à partir de l'EEPROM
+  affectVar();        // Affectation dans les variables globales
 
   
   /*
@@ -437,7 +423,7 @@ void setup()
    */
   // ads.setGain(GAIN_TWOTHIRDS);  // 2/3x gain +/- 6.144V  1 bit = 3mV      0.1875mV (default)
   ads.setGain(GAIN_ONE);           // 1x gain   +/- 4.096V  1 bit = 2mV      0.125mV
-  //ads.setGain(GAIN_TWO);        // 2x gain   +/- 2.048V  1 bit = 1mV      0.0625mV
+  //ads.setGain(GAIN_TWO);         // 2x gain   +/- 2.048V  1 bit = 1mV      0.0625mV
   // ads.setGain(GAIN_FOUR);       // 4x gain   +/- 1.024V  1 bit = 0.5mV    0.03125mV
   // ads.setGain(GAIN_EIGHT);      // 8x gain   +/- 0.512V  1 bit = 0.25mV   0.015625mV
   // ads.setGain(GAIN_SIXTEEN);    // 16x gain  +/- 0.256V  1 bit = 0.125mV  0.0078125mV
@@ -789,13 +775,45 @@ void affichageMenuConfiguration()
     /* FIN BLOC : CONFIGURATION ECRAN LCD */
     /**************************************/
     /* ----------------------------------------------------------- */
+    /************************/
+    /* BLOC : REGLAGE HEURE */
+    /************************/
+    /* 
+     * Les données de configuration sont sauvegardées sur la carte SD 
+     */
+    if ((choix.equals("5"))&&(choixMenuConfiguration == 12))
+    {
+        
+      int annee = (LectureValeurNum("ANNEE :")).toInt();
+      annee = constrain (annee,2017,9000);
+      int mois = (LectureValeurNum("MOIS (1-12) :")).toInt();
+      mois = constrain (mois,1,12);
+      int jour = (LectureValeurNum("JOUR (1-31) :")).toInt();
+      jour = constrain (jour,1,31);
+      int heure = (LectureValeurNum("HEURE (0-23) :")).toInt();
+      heure = constrain (heure,0,23);
+      int  minute = (LectureValeurNum("MIN (0-59) :")).toInt();
+      minute = constrain (minute,0,59);
+
+      clock.fillByYMD(annee,mois,jour);   
+      clock.fillByHMS(heure,minute,0);
+
+      clock.setTime();                    // Ecrit les données sur la puce RTC
+
+      printTime(1);                       // Affichage de l'heure et de la date
+      
+    }
+    /****************************/
+    /* FIN BLOC : REGLAGE HEURE */
+    /****************************/
+    /* ----------------------------------------------------------- */
     /*************************************************/
     /* BLOC : SAUVERGARDE CONFIGURATION SUR CARTE SD */
     /*************************************************/
     /* 
      * Les données de configuration sont sauvegardées sur la carte SD 
      */
-    if ((choix.equals("5"))&&(choixMenuConfiguration == 12))
+    if ((choix.equals("5"))&&(choixMenuConfiguration == 13))
     {
       sauvegardeConfig();
     }
@@ -809,7 +827,7 @@ void affichageMenuConfiguration()
     /*
      * Les données de configuration sont chargées à partir de la carte SD 
      */
-    if ((choix.equals("5"))&&(choixMenuConfiguration == 13))
+    if ((choix.equals("5"))&&(choixMenuConfiguration == 14))
     {
       chargementConfig();
       affectVar();
@@ -825,7 +843,7 @@ void affichageMenuConfiguration()
     /*
      * Chargement des paramètres par défaut
      */
-    if ((choix.equals("5"))&&(choixMenuConfiguration == 14))
+    if ((choix.equals("5"))&&(choixMenuConfiguration == 15))
     {
       initVar();
       affectRecord();
@@ -1577,12 +1595,17 @@ bool saveData (String identFichier,String Data)
   // 
   if (monFichier) // Si le fichier est Ok, on peut lancer les opérations d'écriture
   {  
-
+    monFichier.print(Data);
+    delay(200);
     monFichier.close(); // On ferme proprement le fichier
     return 0;
   } 
   else 
   {
+    lcd.clear();
+    lcd.setCursor(0,1);
+    lcd.print("PROBLEME SAUVERGARDE");
+    pause();
     return 1;   // Problème à l'ouverture du fichier
   }
 } //FIN FONCTION SAUVEGARDE
@@ -1610,7 +1633,9 @@ bool saveData (String identFichier,String Data)
          */
 void alimentationFluxSpecifique (String typeSondage)
 {
-  flux =  "IDENTIFIANT DES MESURES : "+identifiant+"\n"+"MESURE :"+typeSondage+"\n"+"\nCONSTANTES DEFINIEES :";  
+  flux = "-----------------------------\n\n";
+  flux = flux + printTime(0);
+  flux =  flux + "\nIDENTIFIANT DES MESURES : "+identifiant+"\n"+"MESURE :"+typeSondage+"\n"+"\nCONSTANTES DEFINIEES :";  
                         
   if (utilisationCoeffI == true)
   {
@@ -1625,7 +1650,7 @@ void alimentationFluxSpecifique (String typeSondage)
   Serial.print(flux);
   // AJOUTER L'OPTION GPS
   saveData(identifiant,flux);
-
+  
    lcd.setCursor(0,1);
    lcd.print(typeSondage);
    
@@ -1769,7 +1794,7 @@ void chargementConfig()
 
   lcd.setCursor(0,1);
   lcd.print("CHARGEMENT OK !");
-  pause();
+  delay(1000);
 }
 
 /**********************************************/
@@ -1810,9 +1835,31 @@ void sauvegardeConfig()
 
 /* --------------------------------------------------------------------------------- */
 
-/*****************************/
-/* FIN BLOC / INIT STRUCTURE */
-/*****************************/
+/**********************************/
+/* BLOC / AFFICHAGE DATE ET HEURE */
+/**********************************/
+
+String printTime(bool affichage)
+{
+  String buffer = "";
+  clock.getTime();
+  buffer = String(clock.dayOfMonth)+"/"+String(clock.month)+"/"+String(clock.year)+" - "+String(clock.hour)+"H"+String(clock.minute);  
+
+  if (affichage)
+  {
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("Date - Heure");
+    lcd.setCursor(0,1);
+    lcd.print(buffer);
+    pause();  
+  }
+  return buffer;
+}
+
+/**************************************/
+/* FIN BLOC / AFFICHAGE DATE ET HEURE */
+/**************************************/
 
 /* --------------------------------------------------------------------------------- */
 
@@ -1835,8 +1882,9 @@ void lancementMesures()
       lcd.setCursor(0,1);
       lcd.print(identifiant);
       monFichier = SD.open(identifiant, FILE_WRITE);
+      delay (200);
       monFichier.close();
-      delay (2000);
+      delay (200);
     } // FIN CREATION FICHIER/ / FIN VERIFICATION FICHIER
   
   /******************************/
