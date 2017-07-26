@@ -94,11 +94,11 @@ Version : 0.31 (2017/07/20) -> Réinitiatilisation des valeurs par défaut dans 
 Version : 0.31 (2017/07/21) -> Ajout de la fonction de sauvegarde en EEPROM
 Version : 0.32 (2017/07/21) -> Intégration du module RTC
 Version : 0.33 (2017/07/26) -> Ajout de la fonctionnalité mesure suivant profil
+Version : 0.34 (2017/07/26) -> Lisibilité du programme -> Ajout des énumérations
+Version : 0.35 (2017/07/26) -> Simplificiation du progamme / gestion des mesures
                                   
   A faire : Modifier le comportement en cas de non saisie -> retourner la valeur par défaut ajouter argument par défaut dans les fonctions valeurNum et valeurFloat
-            Acquisition des données suivant profil
             Acquisition des données suivant carte / balayage -> aller-retour
-            Intégration de l'heure à partir du module RTC + menu de paramétrage de l'heure
             //Ajout d'un bip sonore métronome + Bip de fin de des mesures
             //Ajouter un menu pour régler la vitesse du métronome
             Intégration de l'ADS1220
@@ -115,7 +115,7 @@ Version : 0.33 (2017/07/26) -> Ajout de la fonctionnalité mesure suivant profil
  * 
  */
 #define VERSION_MAJEURE 0
-#define VERSION_MINEURE 33
+#define VERSION_MINEURE 35
 /*
   DESCRIPTION DES CONNEXIONS
   
@@ -187,7 +187,10 @@ DS1307 clock;                             // Définition de l'objet clock pour l
 /* 
  * TYPE DE SONDAGE 
  */
-enum typeSondage {Schlumberger,Wenner,Dipole,Magnetique};
+enum eTypeSondage {Schlumberger,Wenner,Dipole,Magnetique};
+enum ePositionnement {Aucun,Manuel,GPS};
+enum eMesureI {Mesuree,Determinee};
+enum eMode {Specifique,Profil,Carte};
 
 /*
  * DECLARATION DES FONCTIONS : HEADER
@@ -215,7 +218,7 @@ void lancementMesures();                                // Lancement des mesures
 String mesuresSchlumberger(int numeroMesure);           // Lancement des mesures selon le modèle Schlumberger
 String mesuresWenner(int numeroMesure);                 // Lancement des mesures selon le modèle Wenner
 String mesuresDipDip(int numeroMesure);                 // Lancement des mesures selon le modèle Dipole-Dipole
-void alimentationFlux(enum typeSondage sondage);        // Enregistrement de l'entête sur sur carte µSD
+void alimentationFlux(enum eTypeSondage sondage);        // Enregistrement de l'entête sur sur carte µSD
 void lancementAcquisition();                            // Acquisition et conversion 16 bits
 
 String calculDelta (long &ValeurXMin, long &ValeurXmax, long &DistanceProfil, int &nbValeur, double &delta, String axe); // Fonction qui permet de calculer les valeurs Delta
@@ -266,11 +269,11 @@ double multiplier = 0.125F; /* ADS1115  @ // 1x gain   +/- 4.096V (16-bit result
 /*
  * VARIABLES DE CONFIGURATION GLOBALES
  */
-long timerBack = 0;                    // Variable utilisé pour le Timer du clavier
-long timerNow = 0;                     // Variable utilisé pour le Timer du clavier
-String identifiant = "000000";         // Nom du fichier par défaut
-int mode = 0;                          // 0->sondage, 1->suivant profil, 2->suivant carte
-int confSpecifique = 0;                // 0->Schlumberger, 1-> Wenner, 2-> Dipôle-Dipôle, 3->Magnetique
+long timerBack = 0;                                 // Variable utilisé pour le Timer du clavier
+long timerNow = 0;                                  // Variable utilisé pour le Timer du clavier
+String identifiant = "000000";                      // Nom du fichier par défaut
+enum eMode mode = Specifique;                       // 0->Specifique, 1->Profil, 2->Carte
+enum eTypeSondage confSpecifique = Schlumberger;    // 0->Schlumberger, 1-> Wenner, 2-> Dipole, 3->Magnetique
 bool checkCard;
 
 /* 
@@ -294,9 +297,9 @@ long distanceA = 0;
 /*
  * CONFIGURATION GLOBALES
  */
-int mesureI = 0;                      // 0->I mesuree, 1-> I determinee
-int positionnement = 0 ;              // 0->Aucun, 1->Positionnement manuel, 2->GPS;
-long keyboardTimer = 200;             // frequence du clavier par défaut;
+enum eMesureI mesureI = Mesuree;                     // 0->I mesuree, 1-> I determinee
+enum ePositionnement positionnement = Aucun;         // 0->Aucun, 1->Manuel, 2->GPS;
+long keyboardTimer = 200;                            // frequence du clavier par défaut;
 
 /* 
  *  VARIABLES DE GESTION DES SONDAGES ELECTRIQUES
@@ -340,6 +343,10 @@ double DeltaXCarte = 0;               // Delta entre chaque point sur X et Y
 double DeltaYCarte = 0;
 int nbMesuresXCarte = 0;              // Nombre de mesures effectuées sur X et Y
 int nbMesuresYCarte = 0;
+
+double CurseurX = 0;                  // Coordonnées de déplacement sur X et Y
+double CurseurY = 0;
+
 
 /* 
  *  TABLEAU DE MAPPING DU CLAVIER
@@ -602,11 +609,11 @@ void affichageMenuConfiguration()
       mode = affichageMenuMode();
 
       // Mesures spécifiques
-      if (mode == 0) 
+      if (mode == Specifique) 
           confSpecifique=affichageMenuConfSpec(0,2);  // Affichage des modes / Schlumberger, Wenner et Dipole-Dipole
          
       // Mesures selon profil ou carte
-      if ((mode == 1)||(mode == 2)) 
+      if ((mode == Profil)||(mode == Carte)) 
           confSpecifique=affichageMenuConfSpec(2,3);  // Affichage des modes Dipole-Dipole et  magnétique
     }
     /*******************************************/
@@ -626,7 +633,7 @@ void affichageMenuConfiguration()
     {
       mesureI=affichageMenuMesureI(); 
 
-      if (mesureI == 0)                             // I sera mesurée
+      if (mesureI == Mesuree)                             // I sera mesurée
       {
         utilisationCoeffI = false;
         String Tampon;
@@ -1324,45 +1331,30 @@ String mesuresSchlumberger(int numeroMesure)
 {
   // Déclaration des varianles locales
   String tampon;                      // Collecte les informations à sauvegarder
-  double rhoa;                         // Variable dédié au calcul de Rhoa
+  String tamponPosition;
+  double rhoa;                        // Variable dédié au calcul de Rhoa
   String rhoaStr;                     // Conversion de la Rhoa en chaîne de caractères
-  long positionnementX;                 // Variables utilisées pour le positionnement manuel
-  long positionnementY;                 // Variables utilisées pour le positionnement manuel
   
   distanceOA = (LectureValeurNum("Distance OA(cm):")).toInt();
   distanceOA = constrain (distanceOA,1,DISTANCE_MAX);
 
-   /* 
-   * Positionnement à prendre en compte ? 
-   */
-   if (positionnement == 1)    // Positionnement manuel
-   {
-    positionnementX = (LectureValeurNum("Position X(cm):")).toInt();
-    positionnementY = (LectureValeurNum("Position Y(cm):")).toInt();
-   }
+  tamponPosition = fluxPositionnement(); // Récupération du flux de données pour le positionnement
+  
    
   lancementAcquisition();
 
-  /*
-   * Calcul de la résistivité apparente Rhoa
-   */
+  // Calcul de la résisitivité apparente 
   rhoa = PI * (double(distanceOA)/100*double(distanceOA)/100 - double(distanceOM)/100*double(distanceOM)/100) / (2 * double(distanceOM)/100) * (tensionCanBus1 / intensiteDeduiteCanBus2);
 
   // Conversion des données en chaine de caractères
   rhoaStr = String(rhoa,2);
 
+  // Affichage des calculs sur l'écran LCD
   affichageCalculs (tensionCanBus1Str,intensiteDeduiteCanBus2Str,rhoaStr);
 
-  tampon = String(numeroMesure)+","+distanceOA+","+distanceOM+","+rhoaStr+","+tensionCanBus1Str+","+tensionCanBus2Str+","+intensiteDeduiteCanBus2Str;
+  // Alimentation du tampon avec les données collectées
+  tampon = String(numeroMesure)+","+distanceOA+","+distanceOM+","+rhoaStr+","+tensionCanBus1Str+","+tensionCanBus2Str+","+intensiteDeduiteCanBus2Str+","+tamponPosition+"\n";
 
-  if (positionnement == 1) // Postionnement manuel, on ajoute les données X et Y
-  {
-    tampon = tampon+","+positionnementX+","+positionnementY+"\n";
-  }
-  else
-  {
-    tampon = tampon+"\n";
-  }
   return tampon; 
 }
 /************************************************/
@@ -1377,46 +1369,28 @@ String mesuresSchlumberger(int numeroMesure)
 String mesuresWenner(int numeroMesure)
 {
   String tampon;                      // Collecte les informations à sauvegardes
+  String tamponPosition;
   double rhoa;                        // Variable dédié au calcul de Rhoa
   String rhoaStr;                     // Conversion de Rhoa en chaîne de caractères
-  int positionnementX;                 // Variables utilisées pour le positionnement manuel
-  int positionnementY;                 // Variables utilisées pour le positionnement manuel
   
   distanceA = (LectureValeurNum("Distance A(cm):")).toInt();
   distanceA = constrain (distanceA,1,DISTANCE_MAX);
-  
-   /* 
-   * Positionnement à prendre en compte ? 
-   */
-   if (positionnement == 1)    // Positionnement manuel
-   {
-    positionnementX = (LectureValeurNum("Position X(m) :")).toInt();
-    positionnementY = (LectureValeurNum("Position Y(m) :")).toInt();
-   }
+
+  tamponPosition = fluxPositionnement(); // Récupération du flux de données pour le positionnement
 
   lancementAcquisition();
   
-  /*
-   * Calcul de la résisitivité apparente
-   */
+ // Calcul de la résisitivité apparente 
   rhoa = 2 * PI * float(distanceA)/100 * (tensionCanBus1 / intensiteDeduiteCanBus2);
     
   // Conversion des données en chaine de caractères
   rhoaStr = String(rhoa,PRECISION);
 
+  // Affichage des calculs sur l'écran LCD
   affichageCalculs (tensionCanBus1Str,intensiteDeduiteCanBus2Str,rhoaStr);
-  
-  tampon = String(numeroMesure)+","+distanceA+","+rhoaStr+","+tensionCanBus1Str+","+tensionCanBus2Str+","+intensiteDeduiteCanBus2Str;
 
-  
-  if (positionnement == 1) // Postionnement manuel, on ajoute les données X et Y
-  {
-    tampon = tampon+","+positionnementX+","+positionnementY+"\n";
-  }
-  else
-  {
-    tampon = tampon+"\n";
-  }
+  // Alimentation du tampon avec les données collectées
+  tampon = String(numeroMesure)+","+distanceA+","+rhoaStr+","+tensionCanBus1Str+","+tensionCanBus2Str+","+intensiteDeduiteCanBus2Str+","+tamponPosition+"\n";
   
   return tampon;
 
@@ -1432,48 +1406,61 @@ String mesuresWenner(int numeroMesure)
 /*********************************************/
 String mesuresDipDip(int numeroMesure)
 {
-  String tampon;                      // Collecte les informations à sauvegardes
+  String tampon;                      // Collecte les informations à sauvegarder
+  String tamponPosition;               // Collecte les informations pour les positions
   double rhoa;                        // Variable dédié au calcul de Rhoa
   String rhoaStr;                     // Conversion de Rhoa en chaîne de caractères
-  long positionnementX;                // Variables utilisées pour le positionnement manuel
-  long positionnementY;                // Variables utilisées pour le positionnement manuel
-
-    
-   /* 
-   * Positionnement à prendre en compte ? 
-   */
-   if (positionnement == 1)    // Positionnement manuel
-   {
-    positionnementX = (LectureValeurNum("Position X(cm) :")).toInt();
-    positionnementY = (LectureValeurNum("Position Y(cm) :")).toInt();
-   }
+   
+  tamponPosition = fluxPositionnement(); // Récupération du flux de données pour le positionnement
   
   lancementAcquisition();
   
-  /*
-   * Calcul de la résisitivité apparente
-   */
+  
+  // Calcul de la résisitivité apparente 
   rhoa = PI * double(distanceElectrodesA)/100 * valeurN * (valeurN + 1)*(valeurN + 2) * (tensionCanBus1 / intensiteDeduiteCanBus2);
     
   // Conversion des données en chaine de caractères
   rhoaStr = String(rhoa,PRECISION);
 
+  // Affichage des calculs sur l'écran LCD
   affichageCalculs (tensionCanBus1Str,intensiteDeduiteCanBus2Str,rhoaStr);
-  
-  tampon = String(numeroMesure)+","+rhoaStr+","+tensionCanBus1Str+","+tensionCanBus2Str+","+intensiteDeduiteCanBus2Str;
 
-  if (positionnement == 1) // Postionnement manuel, on ajoute les données X et Y
-  {
-    tampon = tampon+","+positionnementX+","+positionnementY+"\n";
-  }
-  else
-  {
-    tampon = tampon+"\n";
-  }
-  
+  // Alimentation du tampon avec les données collectées
+  tampon = String(numeroMesure)+","+rhoaStr+","+tensionCanBus1Str+","+tensionCanBus2Str+","+intensiteDeduiteCanBus2Str+","+tamponPosition+"\n";
+ 
   return tampon;
-
 }
+
+/***************************************/
+/* BLOC : FONCTION FLUX POSITIONNEMENT */
+/***************************************/
+String fluxPositionnement()
+{  
+   String tampon="";
+   long positionnementX = 0;                // Variables utilisées pour les informations de positionnement
+   long positionnementY = 0;                
+   
+   if ((positionnement == Aucun) && (mode == Profil))
+   {
+    positionnementX = CurseurX;
+    positionnementY = CurseurY;
+   }
+   
+   else if (positionnement == Manuel)    // Positionnement manuel
+   {
+    positionnementX = (LectureValeurNum("Position X(cm) :")).toInt();
+    positionnementY = (LectureValeurNum("Position Y(cm) :")).toInt();
+    
+   }
+
+  tampon = String(positionnementX)+","+String(positionnementY);
+  return tampon;
+   
+  
+}
+
+
+
 /*************************************************/
 /* FIN BLOC : FONCTION ACQUISITION DIPOLE-DIPOLE */
 /*************************************************/
@@ -1642,7 +1629,7 @@ bool saveData (String identFichier,String Data)
          *  
          *  ID de mesure,RHOA,U1,I2,DELTA,(GPS)
          */
-void alimentationFlux (enum typeSondage sondage)
+void alimentationFlux (enum eTypeSondage sondage)
 {
   String TypedeSondage = "";
   String constantesComplementaires="";
@@ -1651,7 +1638,7 @@ void alimentationFlux (enum typeSondage sondage)
   if (sondage == Schlumberger)
   {
     TypedeSondage = "SCHLUMBERGER";
-    EtiquetteVariablesSondage = "DISTANCE AB(cm), DISTANCE MN(cm)";
+    EtiquetteVariablesSondage = "DISTANCE OA(cm), DISTANCE OM(cm)";
   }
   else if (sondage == Wenner)
   {
@@ -1707,8 +1694,8 @@ void alimentationFlux (enum typeSondage sondage)
 /*************************/
 void initVar()
 {
-  mesureI = 0;                        
-  positionnement = 0 ;               
+  mesureI = Mesuree;                        
+  positionnement = Aucun ;               
   keyboardTimer = 200;             
 
   utilisationCoeffI = false;       
@@ -1929,7 +1916,7 @@ void lancementMesures()
   /******************************/
   /* BLOC / MESURES SPECIFIQUES */
   /******************************/
-  if (mode == 0)  // Mesures spécifiques
+  if (mode == Specifique)  // Mesures spécifiques
   {
     lcd.clear();
     lcd.print("Mesures specifiques");
@@ -1937,7 +1924,7 @@ void lancementMesures()
     /**********************************/
     /* BLOC / DISPOSITIF SCHLUMBERGER */
     /**********************************/
-    if (confSpecifique == 0)  // Dispositif Schlumberger distance AB varie et MN fixe
+    if (confSpecifique == Schlumberger)  // Dispositif Schlumberger distance AB varie et MN fixe
       {
         int i=1;
             
@@ -1950,6 +1937,7 @@ void lancementMesures()
         while (true)
         {
           String fluxDeDonnees = mesuresSchlumberger(i);
+          Serial.print(fluxDeDonnees);
           saveData(identifiant,fluxDeDonnees);//FONCTION DE SAUVEGARDE DES DONNEES
           if ((LectureValeurNum("Quitter ->1(OUI)")).toInt() == 1) break; 
           i++;
@@ -1964,7 +1952,7 @@ void lancementMesures()
     /****************************/
     /* BLOC / DISPOSITIF WENNER */
     /****************************/
-    if (confSpecifique == 1)                     
+    if (confSpecifique == Wenner)                     
       {
          int i=1;
          alimentationFlux(Wenner); // Création et enregistrement de l'entête sur support SD
@@ -1972,6 +1960,7 @@ void lancementMesures()
          while (true)
          {
            String fluxDeDonnees = mesuresWenner(i);
+           Serial.print(fluxDeDonnees);
            saveData(identifiant,fluxDeDonnees);//FONCTION DE SAUVEGARDE DES DONNEES
            if ((LectureValeurNum("Quitter ->1(OUI)")).toInt() == 1) break; 
            i++;
@@ -1984,7 +1973,7 @@ void lancementMesures()
     /***********************************/
     /* BLOC / DISPOSITIF DIPOLE-DIPOLE */
     /***********************************/
-    if (confSpecifique == 2)                     
+    if (confSpecifique == Dipole)                     
       {
          int i=1;
          alimentationFlux(Dipole); // Création et enregistrement de l'entête sur support SD
@@ -1992,6 +1981,7 @@ void lancementMesures()
         while (true)
         {
           String fluxDeDonnees = mesuresDipDip(i);
+          Serial.print(fluxDeDonnees);
           saveData(identifiant,fluxDeDonnees);//FONCTION DE SAUVEGARDE DES DONNEES
           if ((LectureValeurNum("Quitter ->1(OUI)")).toInt() == 1) break; 
           i++;
@@ -2010,7 +2000,7 @@ void lancementMesures()
   /*********************************/
   /* BLOC / MESURES SUIVANT PROFIL */
   /*********************************/
-  if (mode == 1)  // Mesures Selon Profil
+  if (mode == Profil)  // Mesures Selon Profil
   {
     lcd.clear();
     lcd.print("Mesures profil");
@@ -2020,15 +2010,16 @@ void lancementMesures()
     {
       lcd.clear();
       lcd.print("ATTENTION");
-      lcd.setCursor(1,2);
+      lcd.setCursor(0,1);
       lcd.print("DELTA NON DEF!");
       pause();
+      
     } // FIN BLOC ALERTE / NbMesures = 0
 
     /****************************************************/
     /* BLOC : MESURES PROFIL / DISPOSITIF DIPOLE-DIPOLE */
     /****************************************************/
-    if (confSpecifique == 2)  // Configuration du dispositif suivant dipôle-dipôle
+    if (confSpecifique == Dipole)  // Configuration du dispositif suivant dipôle-dipôle
     {
       
       alimentationFlux (Dipole);
@@ -2038,10 +2029,11 @@ void lancementMesures()
         lcd.clear();
         lcd.print("Mesure:"+String(i)+"/"+String(nbMesuresXProfil));
         lcd.setCursor(0,1);
-        double PositionX = (i-1)*DeltaXProfil;
-        lcd.print("PosX(cm):"+String(PositionX,0));
+        CurseurX = (i-1)*DeltaXProfil;
+        lcd.print("PosX(cm):"+String(CurseurX,0));
         pause();
         String fluxDeDonnees = mesuresDipDip(i);
+        Serial.print(fluxDeDonnees);
         
         saveData(identifiant,fluxDeDonnees);//FONCTION DE SAUVEGARDE DES DONNEES
         if ((LectureValeurNum("Quitter ->1(OUI)")).toInt() == 1) break;
