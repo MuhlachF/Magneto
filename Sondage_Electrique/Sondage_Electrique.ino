@@ -116,7 +116,7 @@ Version : 0.36 (2017/07/26) -> Simplificiation du progamme 2 : fonction mesure()
  * 
  */
 #define VERSION_MAJEURE 0
-#define VERSION_MINEURE 35
+#define VERSION_MINEURE 36
 /*
   DESCRIPTION DES CONNEXIONS
   
@@ -217,6 +217,7 @@ int modifNombreMesures();                               // Nombre de meusres sp�
 String navigationMenu();                                // Fonction permettant de naviguer dans les menus
 void lancementMesures();                                // Lancement des mesures (START est sélectionné)
 String mesures(int numeroMesure);                       // Fonction dédiée aux mesures (Schlumberger, Wenner, Dipole...)
+void mesuresCartes(int CoordX,int CoordY,int numMesure);// Alimentation des données suivant une carte
 void alimentationFlux(enum eTypeSondage sondage);        // Enregistrement de l'entête sur sur carte µSD
 void lancementAcquisition();                            // Acquisition et conversion 16 bits
 
@@ -723,8 +724,13 @@ void affichageMenuConfiguration()
      */
     if ((choix.equals("5"))&&(choixMenuConfiguration == 7)) 
     {
-      calculDelta (XMinCarte,XMaxCarte,DistanceXCarte,nbMesuresXCarte,DeltaXCarte,"X");
-      calculDelta (YMinCarte,YMaxCarte,DistanceYCarte,nbMesuresYCarte,DeltaYCarte,"Y");
+      String valeurDeltaX=calculDelta (XMinCarte,XMaxCarte,DistanceXCarte,nbMesuresXCarte,DeltaXCarte,"X");
+      String valeurDeltaY=calculDelta (YMinCarte,YMaxCarte,DistanceYCarte,nbMesuresYCarte,DeltaYCarte,"Y");
+      lcd.clear();
+      lcd.print("DELTA X="+valeurDeltaX);
+      lcd.setCursor(0,1);
+      lcd.print("DELTA Y="+valeurDeltaY);
+      pause();
     }
     /**********************************/
     /* FIN BLOC : CONFIGURATION CARTE */
@@ -1373,6 +1379,23 @@ String mesures(int numeroMesure)
   tampon = String(numeroMesure)+","+tamponDistance+","+rhoaStr+","+tensionCanBus1Str+","+tensionCanBus2Str+","+intensiteDeduiteCanBus2Str+","+tamponPosition+"\n";
  
   return tampon;
+}
+
+void mesuresCartes(int CoordX,int CoordY,int numMesure)
+{
+   CurseurX = DeltaXCarte*(CoordX-1);
+   CurseurY = DeltaYCarte*(CoordY-1);
+            
+   lcd.clear();
+   lcd.print("Cd:"+String(CoordX)+"/"+String(nbMesuresXCarte)+"-"+String(CoordY)+"/"+String(nbMesuresYCarte));
+   lcd.setCursor(0,1);
+   lcd.print(String(CurseurX,0)+"-"+String(CurseurY,0)+"cm");
+   pause();
+
+   String fluxDeDonnees = mesures(numMesure);
+   Serial.print(fluxDeDonnees);
+        
+   saveData(identifiant,fluxDeDonnees);//FONCTION DE SAUVEGARDE DES DONNEES
 }
 
 /***********************************************/
@@ -2028,52 +2051,27 @@ void lancementMesures()
       alimentationFlux (Dipole);
       int i=0;
 
-      for (int j=1 ; j<=nbMesuresYCarte ; j++)
+      for (int j=1 ; j<=nbMesuresYCarte ; j++) 
       {
         
         if ( (j%2) == 1) // Sens aller
         {
           for (int k=1 ; k<=nbMesuresXCarte ; k++)
           {
-            lcd.clear();
-            lcd.print("Cd:"+String(k)+"/"+String(nbMesuresXCarte)+"-"+String(j)+"/"+String(nbMesuresYCarte));
-            pause();
-          }
-        }
+            mesuresCartes(k,j,i);
+            if ((LectureValeurNum("Quitter ->1(OUI)")).toInt() == 1) break;
+          } // Balayage sur X
+        } // Fin sens aller
         else            // Sens retour
         {
           for (int k=nbMesuresXCarte; k>=1 ; k--)
           {
-            lcd.clear();
-            lcd.print("Coord:"+String(k)+"/"+String(nbMesuresXCarte)+"-"+String(j)+"/"+String(nbMesuresYCarte));
-            pause();
-          }
-        }
-        /*
-        for (int k=1 ; k<=nbMesuresXCarte ; k++)
-        {
-          
-          lcd.print("Coord:"+String(j)+"/"+String(nbMesuresXCarte));
-          lcd.setCursor(0,1);
-          
-          CurseurX = (i-1)*DeltaXProfil;
-          
-          lcd.print("PosX(cm):"+String(CurseurX,0));
-          pause();
-          
-          String fluxDeDonnees = mesures(i);
-          Serial.print(fluxDeDonnees);
-          
-          saveData(identifiant,fluxDeDonnees);//FONCTION DE SAUVEGARDE DES DONNEES
-          if ((LectureValeurNum("Quitter ->1(OUI)")).toInt() == 1) break;
-          i++;
-        }
-        */
-      }
-      
-      
-      
-    }
+            mesuresCartes(k,j,i);
+            if ((LectureValeurNum("Quitter ->1(OUI)")).toInt() == 1) break;
+          } // Balayage sur X
+        } // Fin sens retour
+      } // Fin balayage sur Y  
+    } // Fin dispositif Dipole-Dipole
      /*******************************************************/
     /* FIN BLOC : MESURES PROFIL / DISPOSITIF DIPOLE-DIPOLE */
     /********************************************************/
