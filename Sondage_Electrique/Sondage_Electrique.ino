@@ -97,11 +97,12 @@ Version : 0.33 (2017/07/26) -> Ajout de la fonctionnalité mesure suivant profil
 Version : 0.34 (2017/07/26) -> Lisibilité du programme -> Ajout des énumérations
 Version : 0.35 (2017/07/26) -> Simplificiation du progamme / gestion des mesures
 Version : 0.36 (2017/07/26) -> Simplificiation du progamme 2 : fonction mesure()
+Version : 1.0  (2017/07/27) -> Version de production
                                   
   A faire : Modifier le comportement en cas de non saisie -> retourner la valeur par défaut ajouter argument par défaut dans les fonctions valeurNum et valeurFloat
-            Terminer Acquisition des données suivant carte / balayage -> aller-retour
             //Ajout d'un bip sonore métronome + Bip de fin de des mesures
             //Ajouter un menu pour régler la vitesse du métronome
+            // Intégration des coordonnées GPS
             Intégration de l'ADS1220
             //Intégration d'une librairie FLoat64 pour codage des Floats sur 64 bits
             //Le top : intégration d'une IRQ permettant de lancer la calibration du clavier analogique
@@ -115,8 +116,8 @@ Version : 0.36 (2017/07/26) -> Simplificiation du progamme 2 : fonction mesure()
  * 
  * 
  */
-#define VERSION_MAJEURE 0
-#define VERSION_MINEURE 36
+#define VERSION_MAJEURE 1
+#define VERSION_MINEURE 0
 /*
   DESCRIPTION DES CONNEXIONS
   
@@ -1423,7 +1424,6 @@ String fluxPositionnement()
    {
     positionnementX = (LectureValeurNum("Position X(cm) :")).toInt();
     positionnementY = (LectureValeurNum("Position Y(cm) :")).toInt();
-    
    }
 
   tampon = String(positionnementX)+","+String(positionnementY);
