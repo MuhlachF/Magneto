@@ -1,4 +1,4 @@
----------------------------------
+﻿---------------------------------
 1. Principe du sondage éléctrique
 ---------------------------------
 La prospection électrique consiste à injecter des courants sur une paire 
@@ -13,9 +13,9 @@ Langue : Anglais
 ISBN-10: 1785481991
 ISBN-13: 978-1785481994
 
------------------------------------
-2. Présentation du projet : Magneto
------------------------------------
+-------------------------
+2. Présentation du projet
+-------------------------
 
 Le projet de réalisation qui vous est ici présenté est destiné à la prospection 
 électrique du sous-sol par mesure de résistivité. Cet appareil est «opensource» 
